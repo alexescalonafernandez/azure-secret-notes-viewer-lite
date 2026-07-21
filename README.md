@@ -1,2 +1,51 @@
-# azure-secret-notes-viewer-lite
-Security-focused Azure portfolio project demonstrating Microsoft Entra ID authentication, app-role authorization, Managed Identity, Key Vault RBAC, App Service, Bicep, and operational documentation.
+# Secret Notes Viewer Lite
+
+Secret Notes Viewer Lite is a security-focused Azure learning project for a small web application that will display a closed set of synthetic demonstration notes stored as Azure Key Vault secrets. It is intentionally documentation-first so the identity, authorization, workload identity, and secret-handling model are agreed before application code or Azure infrastructure exists.
+
+## Learning objectives
+
+- Model Microsoft Entra ID authentication separately from application authorization.
+- Use an app role, `SecretNotes.Reader`, to gate access to protected note viewing.
+- Use an App Service system-assigned Managed Identity as the only Key Vault caller.
+- Apply Azure Key Vault Azure RBAC with least privilege.
+- Keep real secrets, credentials, identifiers, and personal data out of source control, logs, screenshots, Issues, pull requests, and telemetry.
+
+## Lite scope
+
+The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages web app, one protected `/Notes` area, a closed catalog of known secret names, and Azure Key Vault as the secret store. Users will never submit arbitrary Key Vault secret names, and users will never access Key Vault directly.
+
+## Planned technology baseline
+
+- ASP.NET Core Razor Pages.
+- Microsoft.Identity.Web for Microsoft Entra ID integration.
+- Single-tenant Microsoft Entra ID authentication.
+- `SecretNotes.Reader` app-role authorization for `/Notes`.
+- Azure App Service with system-assigned Managed Identity.
+- Azure Key Vault using Azure RBAC, with the Managed Identity expected to receive `Key Vault Secrets User`.
+- Azure SDK `SecretClient` with `DefaultAzureCredential`.
+- Bicep for Azure resources in a later milestone.
+- .NET 10 LTS is proposed but remains pending validation against Azure App Service runtimes currently available through Azure CLI.
+
+## Current status
+
+`B4-D0 — Lean Architecture and Security Baseline`
+
+No application code, infrastructure, deployment automation, GitHub Actions workflows, Azure resources, Entra ID objects, Key Vault resources, Managed Identity configuration, or Application Insights configuration are introduced in this baseline.
+
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [Security model](docs/security-model.md)
+- [Cost and teardown operations](docs/operations/cost-and-teardown.md)
+- [ADR 0001: Security architecture baseline](docs/adr/0001-security-architecture-baseline.md)
+
+## Future milestones
+
+- Validate target .NET runtime availability for Azure App Service.
+- Bootstrap Microsoft Entra ID application registration and app role manually with documented evidence that contains no sensitive values.
+- Add the Razor Pages application and enforce `/Notes` authorization.
+- Add Key Vault secret retrieval through Managed Identity and a closed secret-name catalog.
+- Add Bicep-managed Azure infrastructure.
+- Add manual deployment guidance before considering GitHub Actions OIDC.
+
+> **Security warning:** Never commit real secrets, credentials, tokens, tenant IDs, subscription IDs, client IDs, personal data, connection strings, or realistic secret values. Only synthetic demonstration secrets may be used in later milestones.
