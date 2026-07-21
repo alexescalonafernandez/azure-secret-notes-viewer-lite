@@ -9,7 +9,7 @@
 - Azure RBAC assignments for Key Vault.
 - Operational evidence, logs, screenshots, pull requests, and telemetry that could accidentally disclose sensitive data.
 
-Only synthetic demonstration secrets may be used later. Real secrets, credentials, tokens, tenant IDs, subscription IDs, client IDs, personal data, connection strings, and realistic secret values are prohibited.
+Only synthetic demonstration secrets may be used later. Tenant IDs and application/client IDs are identifiers, not credentials, and may be supplied as runtime configuration when needed. Real identifier values should not be unnecessarily published in README files, Issues, pull requests, screenshots, videos, or terminal evidence. Client secrets, passwords, access tokens, refresh tokens, credentials, secret values, sensitive connection strings, personal data, and realistic secret values must never be committed or exposed.
 
 ## Actors and identities
 
@@ -65,11 +65,11 @@ Errors must be safe by default. Authentication failures, missing app roles, Key 
 
 ## Logging and telemetry restrictions
 
-Secret values are prohibited from source control, README and ADRs, Issues and pull requests, logs and exceptions, URLs and query strings, screenshots and videos, terminal output used as evidence, Application Insights telemetry, and custom properties, metrics, or events. Logs may record coarse outcomes such as success, denied, missing configuration, or dependency failure, but must not record secret names unless they are non-sensitive catalog identifiers approved for diagnostics.
+Secret values are prohibited from source control, README and ADRs, Issues and pull requests, logs and exceptions, URLs and query strings, screenshots and videos, terminal output used as evidence, Application Insights telemetry, and custom properties, metrics, or events. Physical Azure Key Vault secret names should not normally be logged. Logs may record coarse outcomes such as success, denied, missing configuration, or dependency failure, and may include controlled logical application-owned note identifiers such as `release-note` only when necessary and safe.
 
 ## Screenshot and documentation rules
 
-Documentation and screenshots must use synthetic placeholders only. They must not show real secrets, credentials, tokens, tenant IDs, subscription IDs, client IDs, personal data, connection strings, realistic secret values, raw access tokens, full Azure resource IDs, or terminal output that contains sensitive values.
+Documentation and screenshots must use synthetic placeholders only. They must not show real secrets, credentials, tokens, personal data, sensitive connection strings, realistic secret values, raw access tokens, full Azure resource IDs, or terminal output that contains sensitive values. Tenant IDs and application/client IDs are non-secret identifiers, but real values should still not be unnecessarily published in portfolio evidence such as screenshots, videos, Issues, pull requests, README files, or terminal output.
 
 ## Threat and negative-test scenarios
 
@@ -80,6 +80,7 @@ Later milestones must test or validate these scenarios:
 - Managed Identity without Key Vault RBAC receives a safe failure with no secret disclosure.
 - Missing secret receives a safe failure with no secret disclosure.
 - Secret value is not exposed through logs or exceptions.
+- Physical Azure Key Vault secret names are not normally logged; controlled logical note identifiers such as `release-note` are logged only when necessary and safe.
 - Secret value is not exposed through documentation or screenshots.
 - Arbitrary secret-name enumeration is impossible through routes, forms, query strings, or request bodies.
-- Sensitive configuration is not stored in source control or App Settings.
+- Sensitive values are not stored in source control or App Settings, while non-secret identifiers such as tenant ID and application/client ID are treated as runtime configuration rather than credentials.

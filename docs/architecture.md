@@ -8,14 +8,37 @@ The human user never accesses Azure Key Vault directly. The web application is t
 
 ```mermaid
 flowchart LR
-    User[User]
-    Entra[Microsoft Entra ID]
-    App[ASP.NET Core Razor Pages]
-    Policy[SecretNotes.Reader authorization policy]
-    MI[App Service system-assigned Managed Identity]
-    KV[Azure Key Vault]
+    subgraph Browser[Browser / user trust boundary]
+        User[Human user]
+    end
 
-    User --> Entra --> App --> Policy --> MI --> KV
+    subgraph Entra[Microsoft Entra ID trust boundary]
+        SignIn[Single-tenant sign-in]
+        Claims[Authenticated user claims and app roles]
+    end
+
+    subgraph AppService[Azure App Service application trust boundary]
+        App[ASP.NET Core Razor Pages]
+        AuthN[Validate authenticated user]
+        AuthZ[Authorize /Notes with SecretNotes.Reader]
+        Catalog[Select approved logical note identifier]
+        SecretClient[SecretClient using DefaultAzureCredential]
+        MI[System-assigned Managed Identity]
+    end
+
+    subgraph KeyVault[Azure Key Vault data-plane trust boundary]
+        RBAC[Azure RBAC authorizes Managed Identity]
+        Secret[Approved synthetic secret]
+    end
+
+    User -->|authenticate| SignIn
+    SignIn --> Claims
+    Claims -->|token for application only| App
+    App --> AuthN --> AuthZ
+    AuthZ -->|authorized request| Catalog --> SecretClient
+    SecretClient -->|workload authentication| MI
+    MI -->|read secret| RBAC --> Secret
+    Secret -->|secret value returned to application| SecretClient
 ```
 
 ## Actors and Azure components
@@ -81,11 +104,11 @@ Human identity and workload identity are intentionally separate:
 - Azure App Service Plan sized for low-cost learning usage.
 - Azure App Service with a system-assigned Managed Identity.
 - Azure Key Vault configured for Azure RBAC.
-- Optional Application Insights or Log Analytics later, with moderate sampling and strict secret-redaction rules.
+- Application Insights connected to a Log Analytics workspace, with implementation deferred to a later milestone and conservative telemetry, sampling, retention, and cost controls.
 
 ## Non-sensitive application configuration
 
-Permitted configuration values are limited to non-sensitive settings such as environment name, Key Vault URI, known synthetic note labels, and feature flags. Real secrets, credentials, tokens, tenant IDs, subscription IDs, client IDs, personal data, connection strings, and realistic secret values must not be stored in source control or App Settings.
+Non-secret identifiers may be supplied as runtime configuration, including through Azure App Service configuration. These include tenant ID, application/client ID, Key Vault URI, environment name, logical note identifiers such as `release-note`, and feature flags. Real identifier values should still not be unnecessarily published in README files, Issues, pull requests, screenshots, videos, or terminal evidence. Sensitive values such as client secrets, passwords, access tokens, refresh tokens, credentials, secret values, sensitive connection strings, and personal data must never be committed or exposed.
 
 ## Architectural restrictions
 

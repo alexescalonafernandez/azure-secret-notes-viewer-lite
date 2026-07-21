@@ -8,13 +8,13 @@ This document is conceptual for the B4-D0 baseline. It does not include executab
 - Azure App Service Plan for low-cost learning usage.
 - Azure App Service with system-assigned Managed Identity.
 - Azure Key Vault using Azure RBAC.
-- Optional Application Insights or Log Analytics in a later milestone.
+- Application Insights connected to a Log Analytics workspace, with implementation deferred to a later milestone.
 - Microsoft Entra ID application registration, service principal, and app role created through manual documented bootstrap.
 
 ## Expected sources of cost
 
 - App Service Plan compute charges while allocated.
-- Application Insights or Log Analytics ingestion and retention if enabled later.
+- Application Insights and connected Log Analytics workspace ingestion, sampling, and retention when implemented later.
 - Key Vault operations, storage, and optional retention-related costs.
 - Incidental costs from diagnostic settings or retained logs.
 
@@ -29,7 +29,7 @@ This document is conceptual for the B4-D0 baseline. It does not include executab
 
 ## Moderate observability and telemetry usage
 
-Telemetry should help validate authentication, authorization, Managed Identity, and Key Vault behavior without collecting secrets or sensitive identifiers. Sampling, retention, and log categories should be conservative. Secret values must never appear in Application Insights telemetry, custom properties, metrics, events, exceptions, traces, screenshots, or terminal evidence.
+Telemetry should help validate authentication, authorization, Managed Identity, and Key Vault behavior without collecting secrets or sensitive data. The planned baseline is Application Insights connected to a Log Analytics workspace, implemented in a later milestone. Sampling, retention, log categories, and cost controls should be conservative. Secret values must never appear in Application Insights telemetry, Log Analytics data, custom properties, metrics, events, exceptions, traces, screenshots, or terminal evidence.
 
 ## When resources should be removed
 
@@ -58,7 +58,7 @@ Remove Azure resources when:
 - App-role assignments on users or groups.
 - Azure RBAC role assignments whose principal was deleted with the App Service Managed Identity.
 - Retained Key Vault instances or soft-deleted vaults.
-- Log Analytics workspaces, Application Insights components, or diagnostic settings created later.
+- Application Insights components, connected Log Analytics workspaces, or diagnostic settings created later.
 
 ## Validation after teardown
 
