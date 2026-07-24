@@ -1,6 +1,6 @@
 # Secret Notes Viewer Lite
 
-Secret Notes Viewer Lite is a security-focused Azure learning project for a small web application that will display a closed set of synthetic demonstration notes stored as Azure Key Vault secrets. It is intentionally documentation-first so the identity, authorization, workload identity, and secret-handling model are agreed before application code or Azure infrastructure exists.
+Secret Notes Viewer Lite is a security-focused Azure learning project for a small web application that will display a closed set of synthetic demonstration notes stored as Azure Key Vault secrets. The repository now includes the minimal locally runnable ASP.NET Core Razor Pages skeleton while keeping identity, authorization, Azure integration, and infrastructure deferred.
 
 ## Learning objectives
 
@@ -28,24 +28,44 @@ The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages w
 
 ## Current status
 
-`B4-D1 — Local Toolchain and App Service Runtime Validation`
+`B4-D2 — Minimal Razor Pages Application Skeleton`
 
-The .NET 10 target is confirmed as `net10.0`. `DOTNETCORE:10.0` is the canonical Azure CLI runtime argument, while `DOTNETCORE|10.0` is the App Service `linuxFxVersion` intended for later Bicep configuration. No application code, infrastructure, deployment automation, GitHub Actions workflows, Azure resources, Entra ID objects, Key Vault resources, Managed Identity configuration, or Application Insights configuration are introduced in this milestone.
+The repository contains one .NET 10 Razor Pages application with a branded home page and a minimal built-in health endpoint at `/health`. The application has no authentication, authorization policy, Azure integration, or external NuGet package dependency.
+
+## Application structure
+
+- Solution: `SecretNotesViewer.slnx`
+- Web project: `src/SecretNotesViewer.Web/SecretNotesViewer.Web.csproj`
+
+## Local quick start
+
+```bash
+dotnet restore SecretNotesViewer.slnx
+dotnet build SecretNotesViewer.slnx --configuration Release --no-restore
+dotnet run --project src/SecretNotesViewer.Web/SecretNotesViewer.Web.csproj
+```
+
+After the application starts, open the printed loopback URL. `GET /` displays the application skeleton and `GET /health` returns a minimal process-health response. See the [local development guide](docs/operations/local-development.md) for the complete workflow and smoke-validation examples.
 
 ## Documentation
 
 - [Architecture](docs/architecture.md)
 - [Security model](docs/security-model.md)
 - [Cost and teardown operations](docs/operations/cost-and-teardown.md)
+- [Local development](docs/operations/local-development.md)
 - [Local toolchain and App Service runtime validation](docs/operations/runtime-validation.md)
 - [ADR 0001: Security architecture baseline](docs/adr/0001-security-architecture-baseline.md)
 
-## Future milestones
+## Deferred capabilities
 
-- Bootstrap Microsoft Entra ID application registration and app role manually with documented evidence that contains no sensitive values.
-- Add the Razor Pages application and enforce `/Notes` authorization.
-- Add Key Vault secret retrieval through Managed Identity and a closed secret-name catalog.
-- Add Bicep-managed Azure infrastructure.
-- Add manual deployment guidance before considering GitHub Actions OIDC.
+- `/Notes`
+- Microsoft Entra ID authentication
+- `SecretNotes.Reader` authorization
+- Azure Key Vault
+- Managed Identity
+- Bicep
+- Azure resources
+- Application Insights
+- CI/CD
 
 > **Security warning:** Never commit real secrets, credentials, tokens, tenant IDs, subscription IDs, client IDs, personal data, connection strings, or realistic secret values. Only synthetic demonstration secrets may be used in later milestones.
