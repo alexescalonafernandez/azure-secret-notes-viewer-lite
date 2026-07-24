@@ -24,24 +24,25 @@ The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages w
 - Azure Key Vault using Azure RBAC, with the Managed Identity expected to receive `Key Vault Secrets User`.
 - Azure SDK `SecretClient` with `DefaultAzureCredential`.
 - Bicep for Azure resources in a later milestone.
-- .NET 10 LTS is proposed but remains pending validation against Azure App Service runtimes currently available through Azure CLI.
+- .NET 10 LTS is proposed but remains provisional because the installed Azure CLI could not return an explicit supported-only runtime result.
 
 ## Current status
 
-`B4-D0 — Lean Architecture and Security Baseline`
+`B4-D1 — Local Toolchain and App Service Runtime Validation`
 
-No application code, infrastructure, deployment automation, GitHub Actions workflows, Azure resources, Entra ID objects, Key Vault resources, Managed Identity configuration, or Application Insights configuration are introduced in this baseline.
+The runtime target remains provisional pending an explicit supported-only App Service Linux runtime result. See the validation record for the exact .NET 10 value observed in the available-runtime catalog. No application code, infrastructure, deployment automation, GitHub Actions workflows, Azure resources, Entra ID objects, Key Vault resources, Managed Identity configuration, or Application Insights configuration are introduced in this milestone.
 
 ## Documentation
 
 - [Architecture](docs/architecture.md)
 - [Security model](docs/security-model.md)
 - [Cost and teardown operations](docs/operations/cost-and-teardown.md)
+- [Local toolchain and App Service runtime validation](docs/operations/runtime-validation.md)
 - [ADR 0001: Security architecture baseline](docs/adr/0001-security-architecture-baseline.md)
 
 ## Future milestones
 
-- Validate target .NET runtime availability for Azure App Service.
+- Confirm the supported App Service Linux .NET runtime with a CLI version that exposes support status.
 - Bootstrap Microsoft Entra ID application registration and app role manually with documented evidence that contains no sensitive values.
 - Add the Razor Pages application and enforce `/Notes` authorization.
 - Add Key Vault secret retrieval through Managed Identity and a closed secret-name catalog.
