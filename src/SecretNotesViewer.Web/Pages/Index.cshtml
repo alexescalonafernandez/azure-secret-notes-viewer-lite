@@ -1,0 +1,26 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Home";
+}
+
+<div class="text-center mb-4">
+    <h1 class="display-4">Secret Notes Viewer Lite</h1>
+    <p class="lead">A security-focused Azure learning project.</p>
+</div>
+
+<div class="mx-auto" style="max-width: 48rem;">
+    <h2>Current milestone</h2>
+    <p>
+        This milestone contains only the locally runnable ASP.NET Core Razor Pages application skeleton.
+        It does not connect to Azure services or display secret notes.
+    </p>
+
+    <h2 class="h4 mt-4">Deferred capabilities</h2>
+    <ul>
+        <li>Microsoft Entra ID authentication</li>
+        <li><code>SecretNotes.Reader</code> authorization</li>
+        <li>Managed Identity</li>
+        <li>Azure Key Vault integration</li>
+    </ul>
+</div>
