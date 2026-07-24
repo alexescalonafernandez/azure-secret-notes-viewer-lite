@@ -24,13 +24,13 @@ The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages w
 - Azure Key Vault using Azure RBAC, with the Managed Identity expected to receive `Key Vault Secrets User`.
 - Azure SDK `SecretClient` with `DefaultAzureCredential`.
 - Bicep for Azure resources in a later milestone.
-- .NET 10 LTS is proposed but remains provisional because the installed Azure CLI could not return an explicit supported-only runtime result.
+- .NET 10 LTS with target framework `net10.0`, Azure CLI runtime argument `DOTNETCORE:10.0`, and future Bicep/App Service `linuxFxVersion` value `DOTNETCORE|10.0`.
 
 ## Current status
 
 `B4-D1 — Local Toolchain and App Service Runtime Validation`
 
-The runtime target remains provisional pending an explicit supported-only App Service Linux runtime result. See the validation record for the exact .NET 10 value observed in the available-runtime catalog. No application code, infrastructure, deployment automation, GitHub Actions workflows, Azure resources, Entra ID objects, Key Vault resources, Managed Identity configuration, or Application Insights configuration are introduced in this milestone.
+The .NET 10 target is confirmed as `net10.0`. `DOTNETCORE:10.0` is the canonical Azure CLI runtime argument, while `DOTNETCORE|10.0` is the App Service `linuxFxVersion` intended for later Bicep configuration. No application code, infrastructure, deployment automation, GitHub Actions workflows, Azure resources, Entra ID objects, Key Vault resources, Managed Identity configuration, or Application Insights configuration are introduced in this milestone.
 
 ## Documentation
 
@@ -42,7 +42,6 @@ The runtime target remains provisional pending an explicit supported-only App Se
 
 ## Future milestones
 
-- Confirm the supported App Service Linux .NET runtime with a CLI version that exposes support status.
 - Bootstrap Microsoft Entra ID application registration and app role manually with documented evidence that contains no sensitive values.
 - Add the Razor Pages application and enforce `/Notes` authorization.
 - Add Key Vault secret retrieval through Managed Identity and a closed secret-name catalog.

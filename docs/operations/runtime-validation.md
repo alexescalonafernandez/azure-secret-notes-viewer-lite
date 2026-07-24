@@ -32,7 +32,7 @@ az webapp list-runtimes --os-type linux --output json --only-show-errors
 az webapp list-runtimes --os-type linux --show-runtime-details --output json --only-show-errors
 ```
 
-The installed Azure CLI rejected the `--runtime` and `--support` arguments because those filters are not available in version 2.85.0. Its command help identifies the unfiltered form as the compatible read-only command for listing available built-in stacks, so the unfiltered Linux result was parsed locally and reduced to .NET entries only. The detailed-output option returned the same flat values.
+Azure CLI 2.85.0 did not recognize the newer `--runtime` and `--support` filters. The compatible unfiltered Linux runtime command succeeded, and its flat output was filtered locally to the relevant .NET entries. The detailed-output option returned the same flat values.
 
 ## Local toolchain results
 
@@ -50,7 +50,7 @@ The local .NET 10 SDK check establishes build-tool availability only. It does no
 
 ## App Service Linux runtime results
 
-The installed CLI did not return explicit support-status fields, so no supported-only entries could be established. Its compatible available-runtime query returned these relevant App Service Linux .NET values:
+The compatible Azure CLI command for viewing supported App Service Linux runtimes returned these relevant .NET entries:
 
 | .NET version | Value returned by Azure CLI |
 | --- | --- |
@@ -58,15 +58,27 @@ The installed CLI did not return explicit support-status fields, so no supported
 | .NET 9 | `DOTNETCORE:9.0` |
 | .NET 8 | `DOTNETCORE:8.0` |
 
-Azure CLI 2.85.0 returned a flat list of configuration values rather than structured objects. It therefore returned no separate display-name field. `DOTNETCORE:10.0` is the exact value observed for .NET 10 and the unambiguous candidate deployment/runtime value, but it is not selected while support status remains unconfirmed.
+Azure CLI 2.85.0 returned a flat list of runtime arguments rather than separate display names and configuration fields. The two deployment syntaxes have distinct purposes:
+
+| Purpose | Value |
+| --- | --- |
+| Azure CLI runtime argument, including `az webapp create --runtime` | `DOTNETCORE:10.0` |
+| App Service `linuxFxVersion`, including Bicep, ARM, site configuration, and `az webapp config set --linux-fx-version` | `DOTNETCORE|10.0` |
+
+`DOTNETCORE:10.0` is the canonical Azure CLI runtime argument observed directly from `az webapp list-runtimes`. `DOTNETCORE|10.0` is the App Service `linuxFxVersion` intended for later Bicep configuration. These values are not interchangeable strings.
 
 ## Runtime decision
 
-**Not confirmed.** The project does not yet accept .NET 10 as its final target.
+**Confirmed.** The project accepts .NET 10 as its target.
 
-The local toolchain includes .NET SDK `10.0.301`, Azure CLI authentication was valid, and the compatible available-runtime query succeeded and returned `DOTNETCORE:10.0`. However, Azure CLI 2.85.0 rejected the required `--runtime dotnet --support supported` filters and did not return support-status metadata. The required supported-only evidence is therefore missing, so the observed value is not promoted to the selected canonical deployment value.
+```text
+Target framework: net10.0
+Azure CLI runtime argument: DOTNETCORE:10.0
+Bicep/App Service linuxFxVersion: DOTNETCORE|10.0
+Decision: Confirmed
+```
 
-Local SDK availability and App Service support are separate conditions. Local availability is confirmed; App Service supported-runtime classification is not.
+The local toolchain includes .NET SDK `10.0.301`, Azure CLI authentication was valid, and the compatible App Service Linux runtime query succeeded and returned `DOTNETCORE:10.0`. Local SDK availability and App Service runtime availability were validated separately, and both conditions were satisfied.
 
 ## Security and redaction controls
 
@@ -76,7 +88,8 @@ The following were deliberately omitted: subscription and tenant details, accoun
 
 ## Limitations and deferred validation
 
-- Azure CLI 2.85.0 predates the structured output and `--runtime`/`--support` filters described by its own forthcoming breaking-change notice. The CLI-documented compatible list operation supplied candidate configuration values but could not prove their support classification.
-- Revalidation is deferred until a permitted environment has an Azure CLI version that returns explicit support status. No tool was installed or upgraded during this milestone.
-- This milestone does not validate application compilation, target-framework configuration, deployment, App Service behavior, Azure resource configuration, authentication flows, authorization policies, Managed Identity, Key Vault access, or telemetry.
+- Azure CLI 2.85.0 did not recognize the newer `--runtime` and `--support` filters. The compatible unfiltered Linux runtime command succeeded, and its flat output was filtered locally to the relevant .NET entries.
+- This milestone confirms toolchain and runtime availability only. It does not validate application compilation, deployment, execution in App Service, Azure resource configuration, authentication flows, authorization policies, Managed Identity, Key Vault access, or telemetry.
+- Later Bicep work must use `DOTNETCORE|10.0` for `linuxFxVersion`, not the colon-form Azure CLI runtime argument.
+- No tool was installed or upgraded during this milestone.
 - No Azure resources were created, updated, restarted, deployed, assigned permissions, or deleted.

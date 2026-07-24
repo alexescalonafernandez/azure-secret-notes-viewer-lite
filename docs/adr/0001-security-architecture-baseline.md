@@ -28,7 +28,7 @@ The approved baseline decisions are:
 - Use Bicep for Azure resources in a later milestone.
 - Deploy manually first.
 - Defer GitHub Actions OIDC until after the manual deployment path is understood.
-- Propose .NET 10 LTS, but keep it provisional. On 2026-07-24 UTC, local .NET 10 SDK availability and the App Service Linux available-runtime catalog were checked independently, but explicit supported-only runtime validation remained incomplete because Azure CLI 2.85.0 did not accept the required support filter; see the [runtime validation record](../operations/runtime-validation.md).
+- Use .NET 10 LTS with target framework `net10.0`. On 2026-07-24 UTC, local SDK `10.0.301` and App Service Linux runtime availability were validated independently. Azure CLI returned the canonical runtime argument `DOTNETCORE:10.0`; future Bicep configuration will use the distinct App Service `linuxFxVersion` value `DOTNETCORE|10.0`. See the [runtime validation record](../operations/runtime-validation.md).
 
 ## Rationale
 
@@ -45,7 +45,7 @@ A closed secret-name catalog prevents arbitrary secret-name enumeration and avoi
 - Local development may require separate, carefully controlled developer permissions that must not be confused with production workload permissions.
 - Entra ID objects may require manual cleanup because they can outlive Azure resource teardown.
 - Deployment automation and GitHub Actions OIDC are deferred.
-- .NET 10 cannot be finalized until an explicit supported-only App Service Linux runtime result confirms it; local SDK availability alone is insufficient.
+- .NET 10 is confirmed as the target; local SDK availability and App Service Linux runtime availability were validated separately.
 
 ## Alternatives considered
 
@@ -59,7 +59,7 @@ A closed secret-name catalog prevents arbitrary secret-name enumeration and avoi
 
 ## Validation required
 
-- Local .NET 10 SDK availability and the App Service Linux available-runtime catalog were checked on 2026-07-24 UTC, but explicit support classification remains incomplete because Azure CLI 2.85.0 rejected the required `--support supported` filter. Revalidate with compatible CLI output before finalizing the target; see the [runtime validation record](../operations/runtime-validation.md).
+- The .NET 10 decision was confirmed on 2026-07-24 UTC using local SDK `10.0.301` and the App Service Linux runtime result `DOTNETCORE:10.0`. Future Bicep configuration will use `DOTNETCORE|10.0` as `linuxFxVersion`; see the [runtime validation record](../operations/runtime-validation.md).
 - Validate unauthenticated `/Notes` requests are challenged.
 - Validate authenticated users without `SecretNotes.Reader` are denied.
 - Validate users with `SecretNotes.Reader` can access the application feature but do not call Key Vault directly.
