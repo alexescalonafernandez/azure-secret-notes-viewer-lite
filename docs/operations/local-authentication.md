@@ -23,7 +23,13 @@ The existing App Registration is named `Secret Notes Viewer Lite - Development`,
 - `https://localhost:7164/signin-oidc`
 - `https://localhost:7164/signout-callback-oidc`
 
-Its front-channel logout URL is `https://localhost:7164/signout-oidc`. Implicit access-token and ID-token flows, public client flows, API permissions, and optional claims are disabled or absent. Assignment is required, the Enterprise Application is not visible to users, and exactly one individual user is assigned. The existing `SecretNotes.Reader` app role is not enforced in this milestone.
+Its front-channel logout URL is `https://localhost:7164/signout-oidc`. Implicit access-token flow, implicit ID-token/hybrid flow, and public client flow are disabled. API permissions and optional claims are absent. Assignment is required, the Enterprise Application is not visible to users, and exactly one individual user is assigned. The existing `SecretNotes.Reader` app role is not enforced in this milestone.
+
+## Selected protocol flow
+
+Local sign-in uses OpenID Connect Authorization Code Flow with PKCE enabled. The browser receives an authorization code, and the server redeems that code using the local development confidential-client credential. An ID token obtained through code redemption does not require enabling the App Registration's implicit ID-token checkbox.
+
+The App Registration must continue rejecting direct `response_type=id_token` requests. Do not enable implicit grant or hybrid flow as a workaround.
 
 ## Development credential decision
 
@@ -53,7 +59,7 @@ dotnet user-secrets set "AzureAd:ClientCredentials:0:ClientSecret" "<client-secr
 
 ## Committed versus local configuration
 
-Committed `appsettings.json` contains only the Microsoft identity platform instance, callback paths, signed-out redirect path, and the client-credential source type. Tenant ID, client ID, and client-secret value remain local in User Secrets and must never be committed.
+Committed `appsettings.json` contains only the Microsoft identity platform instance, callback paths, signed-out redirect path, Authorization Code Flow response type, PKCE setting, and client-credential source type. Tenant ID, client ID, and client-secret value remain local in User Secrets and must never be committed.
 
 ## Restore and build
 
@@ -82,7 +88,7 @@ In a signed-out browser session, open the home page and Privacy page. Both must 
 
 ## Sign-in validation
 
-Select `Sign in`. Complete Microsoft Entra authentication with the assigned validation user. Microsoft Entra must return the browser to the local application through `/signin-oidc`.
+Select `Sign in`. Complete Microsoft Entra authentication with the assigned validation user. Microsoft Entra must return the browser to the local application through `/signin-oidc`. Confirm that sign-in succeeds with Authorization Code Flow and PKCE; do not inspect, copy, publish, or capture the complete authorization URL.
 
 ## Authenticated-state validation
 
@@ -103,6 +109,7 @@ Open `https://localhost:7164/health` before and after authentication. The endpoi
 - **Missing client secret:** The authorization response cannot be redeemed. Set the `AzureAd:ClientCredentials:0:ClientSecret` User Secrets key.
 - **Expired client secret:** Authentication fails during authorization-code redemption. Create a replacement short-lived secret, update the User Secrets value, validate it, and delete the expired secret manually.
 - **Incorrect secret value:** Authentication fails during authorization-code redemption. Ensure the copied value—not the secret ID—is stored under the client-secret key.
+- **Unsupported response type:** If the application requests `id_token` directly while implicit ID-token flow is disabled, Microsoft Entra returns AADSTS700054. Verify that committed configuration sets `ResponseType` to `code`; do not enable implicit flow to work around the error.
 - **Redirect URI mismatch:** Microsoft Entra rejects or cannot return the authentication response. Run at `https://localhost:7164` and verify the registered URI matches exactly.
 - **Unassigned user:** Microsoft Entra denies access because assignment is required. Use only the already assigned validation user; do not change assignments as part of application troubleshooting.
 - **Invalid local development certificate:** The browser warns about HTTPS or the local server cannot establish HTTPS. Repair and trust the ASP.NET Core development certificate before retrying.

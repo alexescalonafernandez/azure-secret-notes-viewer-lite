@@ -41,6 +41,9 @@ The role allows access to the application's future `/Notes` feature only. It gra
 
 ## Local authentication controls
 
+- Local authentication uses OpenID Connect Authorization Code Flow with PKCE enabled.
+- The browser receives an authorization code, which the server redeems as a confidential client using the development-only client secret.
+- Implicit access-token flow, implicit ID-token/hybrid flow, and public client flow remain disabled. The App Registration must continue rejecting direct `response_type=id_token` requests.
 - Microsoft Entra authentication establishes only whether the local user is authenticated; it does not grant Key Vault access.
 - The application displays only a coarse signed-in or not-signed-in state. It does not display personal identity information, raw claims, roles, tokens, authentication properties, or identifiers.
 - PII logging is not enabled.
