@@ -1,7 +1,21 @@
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.Identity.Web;
+using Microsoft.Identity.Web.UI;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddRazorPages();
+builder.Services
+    .AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
+    .AddMicrosoftIdentityWebApp(
+        builder.Configuration.GetSection("AzureAd"));
+
+builder.Services.AddAuthorization();
+
+builder.Services
+    .AddRazorPages()
+    .AddMicrosoftIdentityUI();
+
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
@@ -18,10 +32,12 @@ app.UseHttpsRedirection();
 
 app.UseRouting();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapStaticAssets();
 app.MapHealthChecks("/health");
+app.MapControllers();
 app.MapRazorPages()
    .WithStaticAssets();
 

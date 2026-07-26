@@ -33,9 +33,20 @@ The role allows access to the application's future `/Notes` feature only. It gra
 - Exactly one individual human user is assigned to `Secret Notes Reader`.
 - The Enterprise Application is hidden from My Apps.
 - No delegated or application API permission is configured, and admin consent has not been granted.
-- No certificate, client secret, or federated credential is configured.
+- Local authentication uses exactly one short-lived, development-only client secret created manually by the repository owner. Its expiration must be the shortest practical duration and never exceed 180 days.
+- The local client-secret value remains outside the repository in .NET User Secrets. User Secrets are not encrypted, are suitable only for local development, and must not be used as a production credential strategy.
+- Production must use a different credential strategy.
 - Real Entra identifiers and personal information are excluded from portfolio evidence and source control.
 - Group assignment was unavailable under the current tenant plan but was not required for this milestone. The role remains compatible with `Users/Groups`; no group was created or assigned, and the authorization design is unchanged.
+
+## Local authentication controls
+
+- Microsoft Entra authentication establishes only whether the local user is authenticated; it does not grant Key Vault access.
+- The application displays only a coarse signed-in or not-signed-in state. It does not display personal identity information, raw claims, roles, tokens, authentication properties, or identifiers.
+- PII logging is not enabled.
+- `SecretNotes.Reader` enforcement remains deferred.
+- The local client secret is solely for the interactive development web application and must not be used in production.
+- App Service Managed Identity remains the future Key Vault caller.
 
 ## Authorization requirements for `/Notes`
 

@@ -1,6 +1,6 @@
 # Secret Notes Viewer Lite
 
-Secret Notes Viewer Lite is a security-focused Azure learning project for a small web application that will display a closed set of synthetic demonstration notes stored as Azure Key Vault secrets. The repository now includes the minimal locally runnable ASP.NET Core Razor Pages skeleton and the Microsoft Entra development identity bootstrap. Runtime authentication, authorization enforcement, Azure integration, and infrastructure remain deferred.
+Secret Notes Viewer Lite is a security-focused Azure learning project for a small web application that will display a closed set of synthetic demonstration notes stored as Azure Key Vault secrets. The repository now includes the locally runnable ASP.NET Core Razor Pages application with local Microsoft Entra authentication. Authorization enforcement, Azure integration, and infrastructure remain deferred.
 
 ## Learning objectives
 
@@ -28,9 +28,9 @@ The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages w
 
 ## Current status
 
-`B4-D3 — Microsoft Entra ID Development Bootstrap`
+`B4-D4 — Local Microsoft Entra Authentication`
 
-The development App Registration and corresponding Enterprise Application now exist. The `SecretNotes.Reader` app role is configured and assigned to one individual user, API permissions are empty, and no credential exists. Application authentication code remains deferred.
+Microsoft.Identity.Web authentication is integrated. Local sign-in and sign-out are supported after the required .NET User Secrets are configured, and the application displays only a coarse signed-in or not-signed-in state. The home page, Privacy page, and health endpoint remain public. `SecretNotes.Reader` enforcement and `/Notes` remain deferred.
 
 ## Application structure
 
@@ -45,7 +45,7 @@ dotnet build SecretNotesViewer.slnx --configuration Release --no-restore
 dotnet run --project src/SecretNotesViewer.Web/SecretNotesViewer.Web.csproj
 ```
 
-After the application starts, open the printed loopback URL. `GET /` displays the application skeleton and `GET /health` returns a minimal process-health response. See the [local development guide](docs/operations/local-development.md) for the complete workflow and smoke-validation examples.
+After the application starts, open the printed HTTPS loopback URL. `GET /` displays the public home page and `GET /health` returns a minimal process-health response. See the [local development guide](docs/operations/local-development.md) for the general workflow and the [local authentication guide](docs/operations/local-authentication.md) for credential setup and authentication validation.
 
 ## Documentation
 
@@ -55,13 +55,13 @@ After the application starts, open the printed loopback URL. `GET /` displays th
 - [Local development](docs/operations/local-development.md)
 - [Local toolchain and App Service runtime validation](docs/operations/runtime-validation.md)
 - [Microsoft Entra ID development bootstrap](docs/operations/entra-development-bootstrap.md)
+- [Local Microsoft Entra authentication](docs/operations/local-authentication.md)
 - [ADR 0001: Security architecture baseline](docs/adr/0001-security-architecture-baseline.md)
 - [ADR 0002: Microsoft Entra ID development identity](docs/adr/0002-entra-development-identity.md)
 
 ## Deferred capabilities
 
 - `/Notes`
-- Microsoft Entra ID authentication
 - `SecretNotes.Reader` authorization policy and enforcement
 - Azure Key Vault
 - Managed Identity
