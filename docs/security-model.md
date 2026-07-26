@@ -22,7 +22,20 @@ Only synthetic demonstration secrets may be used later. Tenant IDs and applicati
 
 ## `SecretNotes.Reader` app role
 
-`SecretNotes.Reader` is a conceptual application role issued by Microsoft Entra ID to authorized human users. It allows access to the application's `/Notes` feature only. It must not be interpreted as Key Vault data-plane permission, Azure RBAC permission, or permission to enumerate arbitrary secrets.
+`SecretNotes.Reader` is configured on the development App Registration for `Users/Groups` and is enabled. One individual human user is assigned to the `Secret Notes Reader` role through the corresponding Enterprise Application for development validation. Application enforcement remains deferred.
+
+The role allows access to the application's future `/Notes` feature only. It grants no Key Vault data-plane permission, Azure RBAC permission, or permission to enumerate arbitrary secrets.
+
+## Development identity controls
+
+- The development App Registration is single tenant.
+- Assignment is required on the Enterprise Application.
+- Exactly one individual human user is assigned to `Secret Notes Reader`.
+- The Enterprise Application is hidden from My Apps.
+- No delegated or application API permission is configured, and admin consent has not been granted.
+- No certificate, client secret, or federated credential is configured.
+- Real Entra identifiers and personal information are excluded from portfolio evidence and source control.
+- Group assignment was unavailable under the current tenant plan but was not required for this milestone. The role remains compatible with `Users/Groups`; no group was created or assigned, and the authorization design is unchanged.
 
 ## Authorization requirements for `/Notes`
 
@@ -49,6 +62,8 @@ Azure Key Vault will use Azure RBAC. The expected data-plane role for the App Se
 - Avoid broad resource group, subscription, wildcard, or owner-style permissions.
 
 ## Identity and permission matrix
+
+The matrix describes the intended state after runtime authentication, authorization enforcement, `/Notes`, and Key Vault integration are implemented.
 
 | Identity | Authenticates to app | May access `/Notes` | Key Vault caller | Expected Key Vault permission | Notes |
 | --- | --- | --- | --- | --- | --- |
