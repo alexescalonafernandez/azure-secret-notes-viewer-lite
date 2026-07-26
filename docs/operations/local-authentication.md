@@ -66,13 +66,15 @@ Restore and build do not require local identity values.
 
 ## Local HTTPS run
 
-Run with the repository's HTTPS launch profile:
+Explicitly select the repository's existing `https` launch profile:
 
-```powershell
-dotnet run --project src/SecretNotesViewer.Web/SecretNotesViewer.Web.csproj
+```bash
+dotnet run \
+  --project src/SecretNotesViewer.Web/SecretNotesViewer.Web.csproj \
+  --launch-profile https
 ```
 
-Open `https://localhost:7164`. Do not use a different port for authentication validation because the redirect URIs are exact.
+The application must listen on `https://localhost:7164`. The `http` profile at `http://localhost:5046` is not valid for the registered Microsoft Entra callbacks. Changing the port would require matching redirect-URI changes in the App Registration and is outside B4-D4.
 
 ## Anonymous validation
 

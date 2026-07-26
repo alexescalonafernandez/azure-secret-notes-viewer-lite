@@ -42,10 +42,14 @@ Microsoft.Identity.Web authentication is integrated. Local sign-in and sign-out 
 ```bash
 dotnet restore SecretNotesViewer.slnx
 dotnet build SecretNotesViewer.slnx --configuration Release --no-restore
-dotnet run --project src/SecretNotesViewer.Web/SecretNotesViewer.Web.csproj
+dotnet run \
+  --project src/SecretNotesViewer.Web/SecretNotesViewer.Web.csproj \
+  --launch-profile https
 ```
 
-After the application starts, open the printed HTTPS loopback URL. `GET /` displays the public home page and `GET /health` returns a minimal process-health response. See the [local development guide](docs/operations/local-development.md) for the general workflow and the [local authentication guide](docs/operations/local-authentication.md) for credential setup and authentication validation.
+Local authentication requires explicitly selecting the existing `https` launch profile, and the application must listen on `https://localhost:7164`. The `http` profile at `http://localhost:5046` is not valid for the registered Microsoft Entra callbacks. Changing the port would require matching redirect-URI changes in the App Registration and is outside B4-D4.
+
+After the application starts, open `https://localhost:7164`. `GET /` displays the public home page and `GET /health` returns a minimal process-health response. See the [local development guide](docs/operations/local-development.md) for the general workflow and the [local authentication guide](docs/operations/local-authentication.md) for credential setup and authentication validation.
 
 ## Documentation
 
