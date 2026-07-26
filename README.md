@@ -28,9 +28,9 @@ The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages w
 
 ## Current status
 
-`B4-D2 — Minimal Razor Pages Application Skeleton`
+`B4-D3 — Microsoft Entra ID Development Bootstrap`
 
-The repository contains one .NET 10 Razor Pages application with a branded home page and a minimal built-in health endpoint at `/health`. The application has no authentication, authorization policy, Azure integration, or external NuGet package dependency.
+The development App Registration and corresponding Enterprise Application now exist. The `SecretNotes.Reader` app role is configured and assigned to one individual user, API permissions are empty, and no credential exists. Application authentication code remains deferred.
 
 ## Application structure
 
@@ -54,13 +54,15 @@ After the application starts, open the printed loopback URL. `GET /` displays th
 - [Cost and teardown operations](docs/operations/cost-and-teardown.md)
 - [Local development](docs/operations/local-development.md)
 - [Local toolchain and App Service runtime validation](docs/operations/runtime-validation.md)
+- [Microsoft Entra ID development bootstrap](docs/operations/entra-development-bootstrap.md)
 - [ADR 0001: Security architecture baseline](docs/adr/0001-security-architecture-baseline.md)
+- [ADR 0002: Microsoft Entra ID development identity](docs/adr/0002-entra-development-identity.md)
 
 ## Deferred capabilities
 
 - `/Notes`
 - Microsoft Entra ID authentication
-- `SecretNotes.Reader` authorization
+- `SecretNotes.Reader` authorization policy and enforcement
 - Azure Key Vault
 - Managed Identity
 - Bicep

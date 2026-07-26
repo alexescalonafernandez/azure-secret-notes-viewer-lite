@@ -2,7 +2,7 @@
 
 ## Logical architecture
 
-Secret Notes Viewer Lite is planned as a small ASP.NET Core Razor Pages application hosted on Azure App Service. It authenticates users with a single Microsoft Entra ID tenant, authorizes access to `/Notes` with the conceptual `SecretNotes.Reader` app role, and retrieves a closed catalog of synthetic demonstration note secrets from Azure Key Vault by using the App Service system-assigned Managed Identity.
+Secret Notes Viewer Lite is planned as a small ASP.NET Core Razor Pages application hosted on Azure App Service. It will authenticate users with a single Microsoft Entra ID tenant, authorize access to `/Notes` with the configured `SecretNotes.Reader` app role, and retrieve a closed catalog of synthetic demonstration note secrets from Azure Key Vault by using the App Service system-assigned Managed Identity.
 
 The human user never accesses Azure Key Vault directly. The web application is the policy enforcement point for user authorization, and the Managed Identity is the workload identity that calls Key Vault.
 
@@ -50,6 +50,17 @@ flowchart LR
 - **System-assigned Managed Identity:** The workload identity attached to App Service and used by the application to authenticate to Azure Key Vault.
 - **Azure Key Vault:** The planned secret store for synthetic demonstration note values.
 - **Azure RBAC:** The authorization system used to grant the Managed Identity data-plane access to Key Vault secrets.
+
+## Development identity bootstrap
+
+The development identity metadata now exists, while application runtime authentication remains deferred:
+
+- **Application object / App Registration:** The development-specific `Secret Notes Viewer Lite - Development` App Registration defines the single-tenant identity-platform configuration, localhost HTTPS callbacks, `SecretNotes.Reader` app role, ownership, and credential registrations. No credential or API permission is configured.
+- **Service principal / Enterprise Application:** The corresponding Enterprise Application represents the application in the tenant. Assignment is required, it is hidden from My Apps, and it holds tenant-local assignments.
+- **Human authorization:** One individual human user is assigned to the `Secret Notes Reader` role for development validation. The role authorizes only the future application feature; authentication middleware, the authorization policy, and `/Notes` are not implemented yet.
+- **Future workload identity:** A future App Service system-assigned Managed Identity will call Azure Key Vault. Neither the assigned human user nor the human user's Entra token is the Key Vault caller.
+
+The existing registration is development-specific and contains localhost HTTPS endpoints only. A separate production App Registration will be created in a future deployment milestone. Production App Service endpoints must not be added to the development registration, and development and production credential lifecycles must remain separate.
 
 ## Authentication flow
 
@@ -115,4 +126,4 @@ Non-secret identifiers may be supplied as runtime configuration, including throu
 - No direct user access to Azure Key Vault.
 - No arbitrary secret-name lookup, enumeration, wildcard reads, or user-controlled Key Vault identifiers.
 - No storage of secret values in source control, App Settings, logs, exceptions, telemetry, URLs, screenshots, videos, Issues, pull requests, or terminal evidence.
-- No application code, tests, infrastructure, scripts, workflows, deployment configuration, Azure resources, or Entra ID resources are part of this milestone.
+- This documentation milestone changes no application code, tests, infrastructure, scripts, workflows, deployment configuration, Azure resources, or Entra ID resources; it records the already-completed manual development identity bootstrap.
