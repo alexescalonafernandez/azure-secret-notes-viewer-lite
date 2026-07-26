@@ -62,7 +62,7 @@ The development identity metadata now exists, while application runtime authenti
 
 The existing registration is development-specific and contains localhost HTTPS endpoints only. A separate production App Registration will be created in a future deployment milestone. Production App Service endpoints must not be added to the development registration, and development and production credential lifecycles must remain separate.
 
-## Authentication flow
+## Planned authentication flow
 
 1. The user requests the application.
 2. The application redirects unauthenticated users to Microsoft Entra ID.
@@ -71,7 +71,7 @@ The existing registration is development-specific and contains localhost HTTPS e
 
 Authentication proves who the human user is. It does not grant direct Key Vault access.
 
-## Authorization flow
+## Planned authorization flow
 
 1. A user requests `/Notes`.
 2. The application evaluates an authorization policy that requires the `SecretNotes.Reader` app role.

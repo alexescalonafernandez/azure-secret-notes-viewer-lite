@@ -1,6 +1,6 @@
 # Secret Notes Viewer Lite
 
-Secret Notes Viewer Lite is a security-focused Azure learning project for a small web application that will display a closed set of synthetic demonstration notes stored as Azure Key Vault secrets. The repository now includes the minimal locally runnable ASP.NET Core Razor Pages skeleton while keeping identity, authorization, Azure integration, and infrastructure deferred.
+Secret Notes Viewer Lite is a security-focused Azure learning project for a small web application that will display a closed set of synthetic demonstration notes stored as Azure Key Vault secrets. The repository now includes the minimal locally runnable ASP.NET Core Razor Pages skeleton and the Microsoft Entra development identity bootstrap. Runtime authentication, authorization enforcement, Azure integration, and infrastructure remain deferred.
 
 ## Learning objectives
 

@@ -63,6 +63,8 @@ Azure Key Vault will use Azure RBAC. The expected data-plane role for the App Se
 
 ## Identity and permission matrix
 
+The matrix describes the intended state after runtime authentication, authorization enforcement, `/Notes`, and Key Vault integration are implemented.
+
 | Identity | Authenticates to app | May access `/Notes` | Key Vault caller | Expected Key Vault permission | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Anonymous user | No | No; challenged | No | None | Must not trigger secret retrieval. |
