@@ -11,16 +11,22 @@
 
 <div class="mx-auto" style="max-width: 48rem;">
     <h2>Current milestone</h2>
+    <p><strong>B4-D4 — Local Microsoft Entra Authentication</strong></p>
+
+    <h2 class="h4 mt-4">Authentication state</h2>
+    <p>@(User.Identity?.IsAuthenticated == true ? "Signed in" : "Not signed in")</p>
+
     <p>
-        This milestone contains only the locally runnable ASP.NET Core Razor Pages application skeleton.
-        It does not connect to Azure services or display secret notes.
+        Local sign-in and sign-out are implemented. The home page remains public, and
+        <code>/health</code> remains public.
     </p>
 
     <h2 class="h4 mt-4">Deferred capabilities</h2>
     <ul>
-        <li>Microsoft Entra ID authentication</li>
-        <li><code>SecretNotes.Reader</code> authorization</li>
+        <li><code>SecretNotes.Reader</code> enforcement</li>
+        <li><code>/Notes</code></li>
+        <li>Azure Key Vault</li>
         <li>Managed Identity</li>
-        <li>Azure Key Vault integration</li>
+        <li>Azure deployment and infrastructure</li>
     </ul>
 </div>
