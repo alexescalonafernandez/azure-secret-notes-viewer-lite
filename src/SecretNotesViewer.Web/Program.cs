@@ -10,6 +10,21 @@ builder.Services
     .AddMicrosoftIdentityWebApp(
         builder.Configuration.GetSection("AzureAd"));
 
+builder.Services.PostConfigure<OpenIdConnectOptions>(
+    OpenIdConnectDefaults.AuthenticationScheme,
+    options =>
+    {
+        options.SaveTokens = true;
+
+        options.Events.OnSignedOutCallbackRedirect = context =>
+        {
+            context.Response.Redirect("/");
+            context.HandleResponse();
+
+            return Task.CompletedTask;
+        };
+    });
+
 builder.Services.AddAuthorization();
 
 builder.Services

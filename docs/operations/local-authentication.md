@@ -31,6 +31,8 @@ Local sign-in uses OpenID Connect Authorization Code Flow with PKCE enabled. The
 
 The App Registration must continue rejecting direct `response_type=id_token` requests. Do not enable implicit grant or hybrid flow as a workaround.
 
+`SaveTokens` is enabled only to support the local interactive authentication lifecycle and reliable OIDC logout. Protocol tokens remain protected inside the local authentication ticket. They must never be rendered, logged, copied, decoded for evidence, or exposed to application code unnecessarily. This setting does not authorize a downstream API, give the human identity Key Vault access, or add a token cache. Reassess this decision before production deployment.
+
 ## Development credential decision
 
 Exactly one short-lived client secret is intended for local development. The repository owner creates it manually and uses the shortest practical expiration, never exceeding 180 days. Production must not use this client secret and must use a different credential strategy.
@@ -96,7 +98,15 @@ After return, the navigation and home page must show only `Signed in`. They must
 
 ## Sign-out validation
 
-Select `Sign out`. Microsoft Entra must process sign-out, return through `/signout-callback-oidc`, and redirect to `/`. The navigation and home page must again show `Not signed in`.
+Select `Sign out` and validate the completed sequence:
+
+1. The application clears its authentication cookie.
+2. The browser is redirected to the Microsoft Entra end-session endpoint.
+3. The OIDC handler supplies the registered sign-out callback.
+4. The saved ID token can be used as an `id_token_hint`.
+5. Microsoft Entra returns to `/signout-callback-oidc`.
+6. The application redirects to `/`.
+7. The home page displays `Not signed in`.
 
 ## Health endpoint regression
 
@@ -110,6 +120,7 @@ Open `https://localhost:7164/health` before and after authentication. The endpoi
 - **Expired client secret:** Authentication fails during authorization-code redemption. Create a replacement short-lived secret, update the User Secrets value, validate it, and delete the expired secret manually.
 - **Incorrect secret value:** Authentication fails during authorization-code redemption. Ensure the copied value—not the secret ID—is stored under the client-secret key.
 - **Unsupported response type:** If the application requests `id_token` directly while implicit ID-token flow is disabled, Microsoft Entra returns AADSTS700054. Verify that committed configuration sets `ResponseType` to `code`; do not enable implicit flow to work around the error.
+- **Microsoft Entra generic signed-out page:** Verify that `https://localhost:7164/signout-callback-oidc` exists under the Web redirect URIs, `https://localhost:7164/signout-oidc` remains the separate front-channel logout URL, `SaveTokens` is enabled for the existing OIDC scheme, and the final callback handler redirects to `/`. Do not publish logout request URLs, inspect or print tokens, or share browser network traces.
 - **Redirect URI mismatch:** Microsoft Entra rejects or cannot return the authentication response. Run at `https://localhost:7164` and verify the registered URI matches exactly.
 - **Unassigned user:** Microsoft Entra denies access because assignment is required. Use only the already assigned validation user; do not change assignments as part of application troubleshooting.
 - **Invalid local development certificate:** The browser warns about HTTPS or the local server cannot establish HTTPS. Repair and trust the ASP.NET Core development certificate before retrying.
