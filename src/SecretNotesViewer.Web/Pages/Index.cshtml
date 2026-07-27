@@ -11,22 +11,28 @@
 
 <div class="mx-auto" style="max-width: 48rem;">
     <h2>Current milestone</h2>
-    <p><strong>B4-D4 — Local Microsoft Entra Authentication</strong></p>
+    <p><strong>B4-D5 — SecretNotes.Reader Authorization and Protected Notes Shell</strong></p>
 
     <h2 class="h4 mt-4">Authentication state</h2>
     <p>@(User.Identity?.IsAuthenticated == true ? "Signed in" : "Not signed in")</p>
 
     <p>
-        Local sign-in and sign-out are implemented. The home page remains public, and
-        <code>/health</code> remains public.
+        Local sign-in and sign-out remain implemented. The home page, Privacy page, and
+        <code>/health</code> remain public.
+    </p>
+
+    <h2 class="h4 mt-4">Protected Notes boundary</h2>
+    <p>
+        <code>/Notes</code> now requires the named <code>ReadSecretNotes</code> authorization
+        policy, which requires the <code>SecretNotes.Reader</code> app role. The page contains
+        fixed synthetic content only.
     </p>
 
     <h2 class="h4 mt-4">Deferred capabilities</h2>
     <ul>
-        <li><code>SecretNotes.Reader</code> enforcement</li>
-        <li><code>/Notes</code></li>
-        <li>Azure Key Vault</li>
+        <li>Azure Key Vault retrieval</li>
         <li>Managed Identity</li>
-        <li>Azure deployment and infrastructure</li>
+        <li>Azure RBAC</li>
+        <li>Deployment and infrastructure</li>
     </ul>
 </div>

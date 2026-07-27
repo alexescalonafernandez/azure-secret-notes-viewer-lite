@@ -2,9 +2,13 @@
 
 ## Logical architecture
 
-Secret Notes Viewer Lite is planned as a small ASP.NET Core Razor Pages application hosted on Azure App Service. It will authenticate users with a single Microsoft Entra ID tenant, authorize access to `/Notes` with the configured `SecretNotes.Reader` app role, and retrieve a closed catalog of synthetic demonstration note secrets from Azure Key Vault by using the App Service system-assigned Managed Identity.
+Secret Notes Viewer Lite is a small ASP.NET Core Razor Pages application planned for future hosting on Azure App Service. It authenticates users with a single Microsoft Entra ID tenant and authorizes access to `/Notes` with the configured `SecretNotes.Reader` app role. The target architecture will retrieve a closed catalog of synthetic demonstration note secrets from Azure Key Vault by using the App Service system-assigned Managed Identity.
 
-The human user never accesses Azure Key Vault directly. The web application is the policy enforcement point for user authorization, and the Managed Identity is the workload identity that calls Key Vault.
+The human user never accesses Azure Key Vault directly. The web application is the policy enforcement point for user authorization, and the future Managed Identity is the workload identity that will call Key Vault.
+
+### Deferred target state
+
+The complete diagram below is the deferred target state. App Service deployment, the closed-catalog retrieval path, `SecretClient`, `DefaultAzureCredential`, Managed Identity, Key Vault, Azure RBAC, telemetry, and CI/CD are not implemented in B4-D5.
 
 ```mermaid
 flowchart LR
@@ -41,6 +45,23 @@ flowchart LR
     Secret -->|secret value returned to application| SecretClient
 ```
 
+## Implemented B4-D5 flow
+
+Microsoft Entra authentication, OpenID Connect Authorization Code Flow, and PKCE are implemented. B4-D5 adds the named application authorization policy and a protected fixed synthetic shell:
+
+```text
+Browser
+→ Microsoft Entra authentication
+→ ASP.NET Core authenticated principal
+→ ReadSecretNotes policy
+→ SecretNotes.Reader role requirement
+→ /Notes fixed synthetic shell
+```
+
+`ReadSecretNotes` requires `SecretNotes.Reader`. Anonymous requests to `/Notes` are challenged, authenticated users without the required role are forbidden, and authenticated users with the role can render the fixed synthetic shell. The authenticated Notes navigation link is a convenience, not the authorization boundary; the server-side PageModel policy is the boundary.
+
+The Notes PageModel applies zero-duration, no-location, no-store response-cache behavior. Integration tests exercise the boundary with non-identifying synthetic principals only. The synthetic authentication scheme exists only in the integration-test assembly, and production contains no test authentication bypass or test-header handling.
+
 ## Actors and Azure components
 
 - **User:** A human browser user who may be anonymous, authenticated without the app role, or authenticated with `SecretNotes.Reader`.
@@ -53,16 +74,16 @@ flowchart LR
 
 ## Development identity bootstrap
 
-The development identity metadata now exists, while application runtime authentication remains deferred:
+The development identity metadata and local application authentication are implemented:
 
-- **Application object / App Registration:** The development-specific `Secret Notes Viewer Lite - Development` App Registration defines the single-tenant identity-platform configuration, localhost HTTPS callbacks, `SecretNotes.Reader` app role, ownership, and credential registrations. No credential or API permission is configured.
+- **Application object / App Registration:** The development-specific `Secret Notes Viewer Lite - Development` App Registration defines the single-tenant identity-platform configuration, localhost HTTPS callbacks, `SecretNotes.Reader` app role, ownership, and credential registrations. One short-lived development-only client credential supports the local confidential-client flow; no API permission is configured.
 - **Service principal / Enterprise Application:** The corresponding Enterprise Application represents the application in the tenant. Assignment is required, it is hidden from My Apps, and it holds tenant-local assignments.
-- **Human authorization:** One individual human user is assigned to the `Secret Notes Reader` role for development validation. The role authorizes only the future application feature; authentication middleware, the authorization policy, and `/Notes` are not implemented yet.
+- **Human authorization:** One individual human user is assigned to the `Secret Notes Reader` role for development validation. The implemented `ReadSecretNotes` policy uses that app-role value to authorize the `/Notes` fixed synthetic shell.
 - **Future workload identity:** A future App Service system-assigned Managed Identity will call Azure Key Vault. Neither the assigned human user nor the human user's Entra token is the Key Vault caller.
 
 The existing registration is development-specific and contains localhost HTTPS endpoints only. A separate production App Registration will be created in a future deployment milestone. Production App Service endpoints must not be added to the development registration, and development and production credential lifecycles must remain separate.
 
-## Planned authentication flow
+## Implemented authentication flow
 
 1. The user requests the application.
 2. The application redirects unauthenticated users to Microsoft Entra ID.
@@ -71,17 +92,17 @@ The existing registration is development-specific and contains localhost HTTPS e
 
 Authentication proves who the human user is. It does not grant direct Key Vault access.
 
-## Planned authorization flow
+## Implemented authorization flow
 
 1. A user requests `/Notes`.
-2. The application evaluates an authorization policy that requires the `SecretNotes.Reader` app role.
+2. The application evaluates the `ReadSecretNotes` authorization policy, which requires the `SecretNotes.Reader` app role.
 3. Anonymous users are challenged to sign in.
 4. Authenticated users without the app role are denied.
-5. Authenticated users with `SecretNotes.Reader` may use the application feature that displays approved synthetic notes.
+5. Authenticated users with `SecretNotes.Reader` may render the fixed synthetic Notes shell.
 
 The app role authorizes the user to use the application feature only. It does not authorize the user to call Key Vault.
 
-## Key Vault access flow
+## Deferred target state: Key Vault access flow
 
 1. The `/Notes` page selects a secret from an application-owned, closed catalog of known secret names.
 2. The application creates an Azure SDK `SecretClient` using `DefaultAzureCredential`.
@@ -96,7 +117,7 @@ Users must not provide arbitrary secret names, query strings, or route values th
 
 - **Browser to application:** Untrusted user input crosses into the application and must be validated.
 - **Application to Microsoft Entra ID:** Authentication depends on configured tenant and application registration metadata.
-- **Application authorization boundary:** `/Notes` requires `SecretNotes.Reader` before any note retrieval is attempted.
+- **Application authorization boundary:** `/Notes` requires the `ReadSecretNotes` policy and its `SecretNotes.Reader` role requirement before the fixed shell is rendered or any future note retrieval is attempted.
 - **Application to Azure Key Vault:** Only the workload identity crosses this boundary; the human user's token is not used for Key Vault access.
 - **Operational evidence boundary:** Screenshots, logs, terminal output, Issues, and pull requests must not contain secret values or sensitive identifiers.
 
@@ -106,8 +127,8 @@ Human identity and workload identity are intentionally separate:
 
 - The human identity authenticates to the application with Microsoft Entra ID.
 - The human identity is authorized inside the application with `SecretNotes.Reader`.
-- The App Service Managed Identity authenticates the workload to Azure Key Vault.
-- Azure RBAC authorizes the Managed Identity, not the human user, to read approved secrets.
+- The future App Service Managed Identity will authenticate the workload to Azure Key Vault.
+- Azure RBAC will authorize the Managed Identity, not the human user, to read approved secrets.
 
 ## Planned Azure resources
 
@@ -126,4 +147,4 @@ Non-secret identifiers may be supplied as runtime configuration, including throu
 - No direct user access to Azure Key Vault.
 - No arbitrary secret-name lookup, enumeration, wildcard reads, or user-controlled Key Vault identifiers.
 - No storage of secret values in source control, App Settings, logs, exceptions, telemetry, URLs, screenshots, videos, Issues, pull requests, or terminal evidence.
-- This documentation milestone changes no application code, tests, infrastructure, scripts, workflows, deployment configuration, Azure resources, or Entra ID resources; it records the already-completed manual development identity bootstrap.
+- B4-D5 implements authentication-aware authorization, the `/Notes` fixed synthetic shell, no-store behavior, and integration tests only. It changes no infrastructure, deployment configuration, Azure resources, Entra ID resources, telemetry, or CI/CD.
