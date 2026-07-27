@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Identity.Web;
 using Microsoft.Identity.Web.UI;
+using SecretNotesViewer.Web.Authorization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,7 +26,11 @@ builder.Services.PostConfigure<OpenIdConnectOptions>(
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services
+    .AddAuthorizationBuilder()
+    .AddPolicy(
+        AuthorizationPolicies.ReadSecretNotes,
+        policy => policy.RequireRole(AppRoles.SecretNotesReader));
 
 builder.Services
     .AddRazorPages()
@@ -57,3 +62,5 @@ app.MapRazorPages()
    .WithStaticAssets();
 
 app.Run();
+
+public partial class Program;
