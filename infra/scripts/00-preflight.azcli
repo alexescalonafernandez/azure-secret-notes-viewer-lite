@@ -1,0 +1,21 @@
+# Run from the repository root in a PowerShell terminal.
+$parameterFile = 'infra/environments/development.bicepparam'
+
+if (-not (Test-Path -LiteralPath $parameterFile)) { throw 'local-parameter-file-missing' }
+
+az version --output none
+if ($LASTEXITCODE -ne 0) { throw 'azure-cli-unavailable' }
+
+az bicep version
+if ($LASTEXITCODE -ne 0) { throw 'bicep-cli-unavailable' }
+
+az account show --output none
+if ($LASTEXITCODE -ne 0) { throw 'azure-session-unavailable' }
+
+az bicep build --file infra/main.bicep --stdout | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'bicep-build-failed' }
+
+az bicep lint --file infra/main.bicep
+if ($LASTEXITCODE -ne 0) { throw 'bicep-lint-failed' }
+
+Write-Output 'preflight-valid'
