@@ -120,7 +120,37 @@ Errors must be safe by default. Authentication failures, missing app roles, Key 
 
 ## Logging and telemetry restrictions
 
-Secret values and note content are prohibited from source control, README and ADRs, Issues and pull requests, logs and exceptions, URLs and query strings, screenshots and videos, terminal output used as evidence, Application Insights telemetry, and custom properties, metrics, or events. Physical Azure Key Vault secret names must not be exposed or logged. Logs may record only coarse, non-sensitive outcomes when logging is introduced later.
+The source-control boundary distinguishes safe B4-D6 fixtures from real or
+retrieved content.
+
+Allowed:
+
+- Explicitly synthetic demonstration strings.
+- Deterministic test fixtures.
+- The three safe logical `demo-*` identifiers.
+- Non-sensitive display names.
+
+These synthetic fixtures are safe to commit because they are intentionally
+non-sensitive and are not representative of production secret material.
+
+Prohibited:
+
+- Real note content.
+- Realistic operational content.
+- Content retrieved from Azure Key Vault.
+- Secret values.
+- Credentials.
+- Tokens.
+- Connection strings.
+- Personal data.
+- Sensitive production information.
+
+Prohibited content must never be committed or exposed through README files,
+ADRs, Issues, pull requests, logs, exceptions, URLs, query strings, screenshots,
+videos, terminal evidence, Application Insights telemetry, custom properties,
+metrics, or events. No note content, including synthetic fixture content, is
+logged. Approved application-owned logical `NoteId` values may be logged only
+when necessary and safe. Physical Azure Key Vault names must never be logged.
 
 ## Screenshot and documentation rules
 
@@ -147,7 +177,7 @@ Deferred:
 - Missing Key Vault secret receives a safe failure with no secret disclosure.
 - Key Vault dependency failure receives a safe failure with no sensitive disclosure.
 - Secret values are not exposed through logs or exceptions.
-- Physical Azure Key Vault secret names are not normally logged; controlled logical note identifiers such as `release-note` are logged only when necessary and safe.
+- Physical Azure Key Vault secret names are never logged; approved application-owned logical `NoteId` values are logged only when necessary and safe.
 
 Continuing security scenarios:
 
