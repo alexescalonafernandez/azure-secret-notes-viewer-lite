@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using SecretNotesViewer.Web.Application.Notes;
 using SecretNotesViewer.Web.Authorization;
 
 namespace SecretNotesViewer.Web.Pages.Notes;
@@ -10,9 +11,15 @@ namespace SecretNotesViewer.Web.Pages.Notes;
     Duration = 0,
     Location = ResponseCacheLocation.None,
     NoStore = true)]
-public class IndexModel : PageModel
+public class IndexModel(
+    IReadNotesService readNotesService)
+    : PageModel
 {
-    public void OnGet()
+    public IReadOnlyList<NoteItem> Notes { get; private set; } =
+        Array.Empty<NoteItem>();
+
+    public async Task OnGetAsync(CancellationToken cancellationToken)
     {
+        Notes = await readNotesService.GetAllAsync(cancellationToken);
     }
 }

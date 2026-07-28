@@ -1,6 +1,6 @@
 # Secret Notes Viewer Lite
 
-Secret Notes Viewer Lite is a security-focused Azure learning project for a small web application that will display a closed set of synthetic demonstration notes. The repository includes a locally runnable ASP.NET Core Razor Pages application with Microsoft Entra authentication and a server-side authorization boundary for a fixed synthetic `/Notes` shell. Azure integration and infrastructure remain deferred.
+Secret Notes Viewer Lite is a security-focused Azure learning project for a small web application that displays a closed set of synthetic demonstration notes. The repository includes a locally runnable ASP.NET Core Razor Pages application with Microsoft Entra authentication, a server-side authorization boundary for `/Notes`, and an application-owned closed catalog exposed through a minimal service and provider boundary. Azure integration and infrastructure remain deferred.
 
 ## Learning objectives
 
@@ -12,7 +12,7 @@ Secret Notes Viewer Lite is a security-focused Azure learning project for a smal
 
 ## Lite scope
 
-The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages web app, one protected `/Notes` area, a closed catalog of known secret names, and Azure Key Vault as the secret store. Users will never submit arbitrary Key Vault secret names, and users will never access Key Vault directly.
+The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages web app, one protected `/Notes` area, an application-owned catalog of known logical note identifiers, and Azure Key Vault as the deferred secret store. Users will never submit arbitrary Key Vault secret names, and users will never access Key Vault directly.
 
 ## Planned technology baseline
 
@@ -28,15 +28,17 @@ The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages w
 
 ## Current status
 
-`B4-D5 — SecretNotes.Reader Authorization and Protected Notes Shell`
+`B4-D6 — Closed Notes Catalog and Application Service Boundary`
 
-Microsoft Entra authentication is implemented through Microsoft.Identity.Web. `/Notes` now requires `SecretNotes.Reader`, enforced server-side through the named `ReadSecretNotes` policy. Automated integration tests cover public endpoints plus anonymous, missing-role, unrelated-role, and authorized requests. The protected page contains fixed synthetic content only. Key Vault, Managed Identity, Azure RBAC, deployment, infrastructure, and CI/CD remain deferred.
+Microsoft Entra authentication is implemented through Microsoft.Identity.Web. `/Notes` requires `SecretNotes.Reader`, enforced server-side through the named `ReadSecretNotes` policy. After authorization, the PageModel calls `IReadNotesService`, which reads the application-owned `ClosedNoteCatalog` and requests deterministic synthetic content through `INoteContentProvider`. Query strings cannot alter or expand the catalog. Key Vault, Managed Identity, Azure RBAC, deployment, infrastructure, telemetry, and CI/CD remain deferred.
 
 ## Application structure
 
 - Solution: `SecretNotesViewer.slnx`
 - Web project: `src/SecretNotesViewer.Web/SecretNotesViewer.Web.csproj`
 - Integration tests: `tests/SecretNotesViewer.Web.Tests/SecretNotesViewer.Web.Tests.csproj`
+- Notes application boundary: `src/SecretNotesViewer.Web/Application/Notes`
+- In-memory provider adapter: `src/SecretNotesViewer.Web/Infrastructure/Notes`
 
 ## Local quick start
 
@@ -62,6 +64,7 @@ After the application starts, open `https://localhost:7164`. `GET /` displays th
 - [Microsoft Entra ID development bootstrap](docs/operations/entra-development-bootstrap.md)
 - [Local Microsoft Entra authentication](docs/operations/local-authentication.md)
 - [SecretNotes.Reader authorization](docs/operations/role-authorization.md)
+- [Closed notes catalog and service boundary](docs/operations/closed-notes-catalog.md)
 - [ADR 0001: Security architecture baseline](docs/adr/0001-security-architecture-baseline.md)
 - [ADR 0002: Microsoft Entra ID development identity](docs/adr/0002-entra-development-identity.md)
 

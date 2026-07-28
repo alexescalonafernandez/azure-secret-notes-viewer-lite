@@ -11,7 +11,7 @@
 
 <div class="mx-auto" style="max-width: 48rem;">
     <h2>Current milestone</h2>
-    <p><strong>B4-D5 — SecretNotes.Reader Authorization and Protected Notes Shell</strong></p>
+    <p><strong>B4-D6 — Closed Notes Catalog and Application Service Boundary</strong></p>
 
     <h2 class="h4 mt-4">Authentication state</h2>
     <p>@(User.Identity?.IsAuthenticated == true ? "Signed in" : "Not signed in")</p>
@@ -24,8 +24,9 @@
     <h2 class="h4 mt-4">Protected Notes boundary</h2>
     <p>
         <code>/Notes</code> now requires the named <code>ReadSecretNotes</code> authorization
-        policy, which requires the <code>SecretNotes.Reader</code> app role. The page contains
-        fixed synthetic content only.
+        policy, which requires the <code>SecretNotes.Reader</code> app role. After authorization,
+        the page reads an application-owned closed catalog through a minimal service and
+        content-provider boundary.
     </p>
 
     <h2 class="h4 mt-4">Deferred capabilities</h2>

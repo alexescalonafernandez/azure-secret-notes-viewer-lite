@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.AspNetCore.Mvc.Testing;
+using SecretNotesViewer.Web.Application.Notes;
 using SecretNotesViewer.Web.Authorization;
 using SecretNotesViewer.Web.Tests.Infrastructure;
 using Xunit;
@@ -90,14 +91,18 @@ public sealed class NotesAuthorizationTests(
     }
 
     [Fact]
-    public async Task Notes_AuthorizedResponse_ContainsThreeSyntheticLabels()
+    public async Task Notes_AuthorizedResponse_RendersExactlyThreeCatalogItems()
     {
         using var response = await GetAuthorizedNotesAsync();
         var content = await response.Content.ReadAsStringAsync();
 
-        Assert.Contains("demo-operations-note", content);
-        Assert.Contains("demo-integration-note", content);
-        Assert.Contains("demo-recovery-note", content);
+        AssertCatalogRenderedExactlyOnce(content);
+        Assert.Contains("Operations note", content);
+        Assert.Contains("Integration note", content);
+        Assert.Contains("Recovery note", content);
+        Assert.Contains("Synthetic operations note content.", content);
+        Assert.Contains("Synthetic integration note content.", content);
+        Assert.Contains("Synthetic recovery note content.", content);
     }
 
     [Fact]
@@ -131,6 +136,30 @@ public sealed class NotesAuthorizationTests(
             StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task Notes_UnknownNoteIdQuery_CannotAlterOrExpandCatalog()
+    {
+        using var response = await GetAuthorizedNotesAsync(
+            "/Notes?noteId=unknown");
+        var content = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.DoesNotContain("unknown", content, StringComparison.OrdinalIgnoreCase);
+        AssertCatalogRenderedExactlyOnce(content);
+    }
+
+    [Fact]
+    public async Task Notes_ArbitrarySecretNameQuery_CannotAlterOrExpandCatalog()
+    {
+        using var response = await GetAuthorizedNotesAsync(
+            "/Notes?secretName=arbitrary");
+        var content = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.DoesNotContain("arbitrary", content, StringComparison.OrdinalIgnoreCase);
+        AssertCatalogRenderedExactlyOnce(content);
+    }
+
     private HttpClient CreateClient()
     {
         return factory.CreateClient(
@@ -140,17 +169,22 @@ public sealed class NotesAuthorizationTests(
             });
     }
 
-    private async Task<HttpResponseMessage> GetAuthorizedNotesAsync()
+    private async Task<HttpResponseMessage> GetAuthorizedNotesAsync(
+        string requestUri = "/Notes")
     {
         using var client = CreateClient();
-        using var request = CreateAuthenticatedRequest(AppRoles.SecretNotesReader);
+        using var request = CreateAuthenticatedRequest(
+            AppRoles.SecretNotesReader,
+            requestUri);
 
         return await client.SendAsync(request);
     }
 
-    private static HttpRequestMessage CreateAuthenticatedRequest(string? role = null)
+    private static HttpRequestMessage CreateAuthenticatedRequest(
+        string? role = null,
+        string requestUri = "/Notes")
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, "/Notes");
+        var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
         request.Headers.Add(TestAuthenticationHandler.AuthenticatedHeader, "true");
 
         if (role is not null)
@@ -159,5 +193,29 @@ public sealed class NotesAuthorizationTests(
         }
 
         return request;
+    }
+
+    private static void AssertCatalogRenderedExactlyOnce(string content)
+    {
+        Assert.Equal(1, CountOccurrences(content, NoteId.Operations.ToString()));
+        Assert.Equal(1, CountOccurrences(content, NoteId.Integration.ToString()));
+        Assert.Equal(1, CountOccurrences(content, NoteId.Recovery.ToString()));
+    }
+
+    private static int CountOccurrences(string content, string value)
+    {
+        var count = 0;
+        var startIndex = 0;
+
+        while ((startIndex = content.IndexOf(
+                   value,
+                   startIndex,
+                   StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            startIndex += value.Length;
+        }
+
+        return count;
     }
 }
