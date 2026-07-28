@@ -2,9 +2,9 @@
 
 ## Protected assets
 
-- The implemented `/Notes` application authorization boundary and fixed synthetic shell.
+- The implemented `/Notes` application authorization boundary and fixed synthetic catalog.
 - Synthetic demonstration secret values stored in Azure Key Vault in later milestones.
-- The closed catalog of approved secret names used by the application.
+- The closed catalog of approved logical note identifiers used by the application.
 - Microsoft Entra ID application registration and app-role assignments.
 - App Service system-assigned Managed Identity.
 - Azure RBAC assignments for Key Vault.
@@ -27,7 +27,7 @@ Only synthetic demonstration secrets may be used later. Tenant IDs and applicati
 
 `SecretNotes.Reader` is configured on the development App Registration for `Users/Groups` and is enabled. One individual human user is assigned to the `Secret Notes Reader` role through the corresponding Enterprise Application for development validation. The implemented `ReadSecretNotes` policy requires this role for `/Notes`.
 
-The role allows access only to the application's fixed synthetic `/Notes` shell. It grants no Key Vault data-plane permission, Azure RBAC permission, or permission to enumerate arbitrary secrets.
+The role allows access only to the application's fixed synthetic `/Notes` catalog. It grants no Key Vault data-plane permission, Azure RBAC permission, or permission to enumerate arbitrary secrets.
 
 ## Development identity controls
 
@@ -65,12 +65,17 @@ The role allows access only to the application's fixed synthetic `/Notes` shell.
 - Anonymous access to `/Notes` is challenged.
 - Authenticated users without `SecretNotes.Reader` are denied.
 - Authenticated users with an unrelated role are denied.
-- Users with `SecretNotes.Reader` may render only the fixed synthetic shell.
-- No role, claim, name, email, token, tenant, or identifier is rendered.
+- Users with `SecretNotes.Reader` may execute the notes service and render only the fixed synthetic catalog.
+- No user role, claim, name, email, token, tenant, or identity identifier is rendered.
 - The authenticated Notes navigation link is not a security control; the PageModel policy is the authorization boundary.
 - `/Notes` applies zero-duration, no-location, no-store response-cache behavior.
-- The application must select secrets only from a closed catalog of known names when Key Vault retrieval is added later.
-- Authorization must succeed before any future Key Vault request is attempted.
+- Authorization succeeds before the PageModel executes the notes service.
+- `ClosedNoteCatalog` owns membership, order, and display names.
+- Only the three known `NoteId` values are valid; logical IDs are not physical Key Vault names.
+- Razor accepts no route, query, form, or handler identifier input.
+- Query strings cannot alter or expand the catalog.
+- Raw identifier strings never reach `INoteContentProvider`, and the provider cannot enumerate notes.
+- Note content is never logged.
 - Application authorization grants no Azure RBAC or Key Vault access.
 
 ## Integration-test authentication isolation
@@ -81,7 +86,7 @@ The production application contains no test scheme, test-header handling, authen
 
 ## System-assigned Managed Identity
 
-A future deployed App Service will use a system-assigned Managed Identity as its workload identity. The identity lifecycle is tied to the App Service, reducing the need to manage a separate credential. The application will use `SecretClient` with `DefaultAzureCredential`; in Azure, the credential chain is expected to resolve to the App Service Managed Identity. This Key Vault integration is not implemented in B4-D5.
+A future deployed App Service will use a system-assigned Managed Identity as its workload identity. The identity lifecycle is tied to the App Service, reducing the need to manage a separate credential. The application will use `SecretClient` with `DefaultAzureCredential`; in Azure, the credential chain is expected to resolve to the App Service Managed Identity. This Key Vault integration is not implemented in B4-D6.
 
 ## Key Vault Azure RBAC
 
@@ -101,10 +106,10 @@ The matrix distinguishes the current implemented application authorization state
 
 | Identity | Authenticates to app | May access `/Notes` | Key Vault caller | Expected Key Vault permission | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Anonymous user | No | No; challenged | No | None | Implemented and covered by B4-D5 tests; must not trigger future secret retrieval. |
-| Authenticated user without app role | Yes | No; denied | No | None | Implemented and covered by B4-D5 tests; authentication alone is insufficient. |
-| Authenticated user with unrelated app role | Yes | No; denied | No | None | Implemented and covered by B4-D5 tests; unrelated roles grant no access. |
-| User with `SecretNotes.Reader` | Yes | Yes; fixed synthetic shell only | No | None through this app role | Implemented; the app role permits application feature use only. |
+| Anonymous user | No | No; challenged | No | None | Implemented and covered by authorization tests; the notes service does not execute. |
+| Authenticated user without app role | Yes | No; denied | No | None | Implemented and covered by authorization tests; authentication alone is insufficient. |
+| Authenticated user with unrelated app role | Yes | No; denied | No | None | Implemented and covered by authorization tests; unrelated roles grant no access. |
+| User with `SecretNotes.Reader` | Yes | Yes; fixed synthetic catalog only | No | None through this app role | Implemented; the app role permits application feature use only. |
 | App Service Managed Identity | No human session | Not applicable | Future: yes | Deferred `Key Vault Secrets User` | Future workload identity used by `SecretClient`. |
 | Local developer identity | Yes when local authentication is configured | Depends on assigned app role | Only for future local Key Vault development if explicitly configured | Minimal temporary read access, if needed | Must not be documented with sensitive IDs or values. |
 | Future CI/CD identity | No | Not applicable | No for runtime reads | Deployment permissions only, deferred | GitHub Actions OIDC is deferred. |
@@ -115,7 +120,7 @@ Errors must be safe by default. Authentication failures, missing app roles, Key 
 
 ## Logging and telemetry restrictions
 
-Secret values are prohibited from source control, README and ADRs, Issues and pull requests, logs and exceptions, URLs and query strings, screenshots and videos, terminal output used as evidence, Application Insights telemetry, and custom properties, metrics, or events. Physical Azure Key Vault secret names should not normally be logged. Logs may record coarse outcomes such as success, denied, missing configuration, or dependency failure, and may include controlled logical application-owned note identifiers such as `release-note` only when necessary and safe.
+Secret values and note content are prohibited from source control, README and ADRs, Issues and pull requests, logs and exceptions, URLs and query strings, screenshots and videos, terminal output used as evidence, Application Insights telemetry, and custom properties, metrics, or events. Physical Azure Key Vault secret names must not be exposed or logged. Logs may record only coarse, non-sensitive outcomes when logging is introduced later.
 
 ## Screenshot and documentation rules
 
@@ -123,15 +128,18 @@ Documentation and screenshots must use synthetic placeholders only. They must no
 
 ## Threat and negative-test scenarios
 
-Automated in B4-D5:
+Automated through B4-D6:
 
 - Anonymous `/Notes` challenge.
 - Missing-role denial.
 - Unrelated-role denial.
 - Authorized-role success.
-- Fixed synthetic content.
+- Exactly three known logical identifiers, display names, and synthetic contents.
 - Identity non-disclosure.
 - No-store behavior.
+- Unknown `noteId` query resistance.
+- Arbitrary `secretName` query resistance.
+- Closed-catalog, service-order, provider-mapping, cancellation, and read-only collection behavior.
 
 Deferred:
 

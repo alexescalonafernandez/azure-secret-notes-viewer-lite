@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.Identity.Web;
 using Microsoft.Identity.Web.UI;
+using SecretNotesViewer.Web.Application.Notes;
 using SecretNotesViewer.Web.Authorization;
+using SecretNotesViewer.Web.Infrastructure.Notes;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,6 +37,9 @@ builder.Services
 builder.Services
     .AddRazorPages()
     .AddMicrosoftIdentityUI();
+
+builder.Services.AddSingleton<INoteContentProvider, InMemoryNoteContentProvider>();
+builder.Services.AddSingleton<IReadNotesService, ReadNotesService>();
 
 builder.Services.AddHealthChecks();
 

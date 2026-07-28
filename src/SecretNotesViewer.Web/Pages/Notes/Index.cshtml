@@ -6,13 +6,22 @@
 
 <div class="mx-auto" style="max-width: 48rem;">
     <h1>Protected notes area</h1>
-    <p>This page contains fixed synthetic note labels only.</p>
+    <p>This page contains a fixed catalog of synthetic notes.</p>
 
-    <ul>
-        <li><code>demo-operations-note</code></li>
-        <li><code>demo-integration-note</code></li>
-        <li><code>demo-recovery-note</code></li>
-    </ul>
+    @foreach (var note in Model.Notes)
+    {
+        <article class="card mb-3">
+            <div class="card-body">
+                <h2 class="h4 card-title">@note.DisplayName</h2>
+                <dl class="mb-0">
+                    <dt>Logical identifier</dt>
+                    <dd><code>@note.Id</code></dd>
+                    <dt>Content</dt>
+                    <dd>@note.Content</dd>
+                </dl>
+            </div>
+        </article>
+    }
 
     <p>Secret value retrieval is deferred to a later Key Vault milestone.</p>
 </div>
