@@ -86,16 +86,23 @@ The production application contains no test scheme, test-header handling, authen
 
 ## System-assigned Managed Identity
 
-A future deployed App Service will use a system-assigned Managed Identity as its workload identity. The identity lifecycle is tied to the App Service, reducing the need to manage a separate credential. The application will use `SecretClient` with `DefaultAzureCredential`; in Azure, the credential chain is expected to resolve to the App Service Managed Identity. This Key Vault integration is not implemented in B4-D6.
+A future deployed App Service will use a system-assigned Managed Identity as its workload identity. The identity lifecycle is tied to the App Service, reducing the need to manage a separate credential. The application will use `SecretClient` with `DefaultAzureCredential`; in Azure, the credential chain is expected to resolve to the App Service Managed Identity. This application integration is not implemented in B4-D7.
 
 ## Key Vault Azure RBAC
 
-Azure Key Vault will use Azure RBAC in the deferred target state. The expected data-plane role for the App Service Managed Identity is `Key Vault Secrets User`, scoped as narrowly as practical. Human users do not receive direct Key Vault access as part of the application reader role.
+The B4-D7 repository definition explicitly enables Azure RBAC on the development vault. Control-plane permission to deploy the vault does not grant secret data-plane access; the owner-run denial check must prove that separation after the first deployment.
+
+Bootstrap grants the signed-in development user `Key Vault Secrets Officer` only at the individual vault and only for the bounded secret-creation procedure. Cleanup runs through `finally`, and validation must confirm that Officer access is absent. The final Bicep deployment assigns that same individual user `Key Vault Secrets User` at vault scope through a deterministic role assignment. The built-in role definition ID, not its display name, is the declarative identity of the role.
+
+This human reader assignment is a local-development exception and is unrelated to `SecretNotes.Reader`. B4-D7 creates no application or Managed Identity assignment. The future App Service Managed Identity remains the expected application caller and will require a separate least-privilege decision in B4-D8 or a later milestone.
+
+The vault keeps public network access enabled so the repository owner can validate it locally. This is a documented development exception. Purge protection and seven-day soft-delete retention reduce accidental irreversible loss but also prevent immediate purge during teardown.
 
 ## Least-privilege principles
 
 - Grant users only the application role needed to view the protected feature.
-- Grant Key Vault data-plane access only to the Managed Identity.
+- Grant application Key Vault data-plane access only to the Managed Identity.
+- Limit the B4-D7 development-user exception to temporary Officer and final read-only User access at one vault.
 - Prefer read-only secret access; do not grant secret write, delete, purge, key, certificate, or management permissions to the application identity.
 - Keep the secret catalog closed and application-owned.
 - Avoid broad resource group, subscription, wildcard, or owner-style permissions.
@@ -111,7 +118,7 @@ The matrix distinguishes the current implemented application authorization state
 | Authenticated user with unrelated app role | Yes | No; denied | No | None | Implemented and covered by authorization tests; unrelated roles grant no access. |
 | User with `SecretNotes.Reader` | Yes | Yes; fixed synthetic catalog only | No | None through this app role | Implemented; the app role permits application feature use only. |
 | App Service Managed Identity | No human session | Not applicable | Future: yes | Deferred `Key Vault Secrets User` | Future workload identity used by `SecretClient`. |
-| Local developer identity | Yes when local authentication is configured | Depends on assigned app role | Only for future local Key Vault development if explicitly configured | Minimal temporary read access, if needed | Must not be documented with sensitive IDs or values. |
+| Local developer identity | Yes when local authentication is configured | Depends on assigned app role | Planned owner-run bootstrap and validation only | Temporary `Key Vault Secrets Officer`, then final `Key Vault Secrets User`, both at vault scope | Repository workflow implemented; Azure state is validated only after owner execution. |
 | Future CI/CD identity | No | Not applicable | No for runtime reads | Deployment permissions only, deferred | GitHub Actions OIDC is deferred. |
 
 ## Secure error-handling expectations
@@ -171,13 +178,21 @@ Automated through B4-D6:
 - Arbitrary `secretName` query resistance.
 - Closed-catalog, service-order, provider-mapping, cancellation, and read-only collection behavior.
 
-Deferred:
+Planned owner-run validation for B4-D7:
 
-- Managed Identity without Key Vault RBAC receives a safe failure with no secret disclosure.
-- Missing Key Vault secret receives a safe failure with no secret disclosure.
-- Key Vault dependency failure receives a safe failure with no sensitive disclosure.
-- Secret values are not exposed through logs or exceptions.
-- Physical Azure Key Vault secret names are never logged; approved application-owned logical `NoteId` values are logged only when necessary and safe.
+- Control-plane deployment does not grant the local user secret data-plane access.
+- Exactly three enabled synthetic secrets exist, each with one initial version and a 90-day UTC expiration.
+- Secret metadata and values are compared locally without printing values or physical names.
+- Temporary `Key Vault Secrets Officer` is absent after bootstrap, including failure paths where cleanup is safely possible.
+- Final `Key Vault Secrets User` exists for the local user at the individual vault.
+- No application identity or Managed Identity assignment exists at the vault.
+- Evidence contains only coarse markers, with no raw Azure errors, identifiers, URLs, principal data, or role objects.
+
+Still deferred to B4-D8 or later:
+
+- Managed Identity without Key Vault RBAC receives a safe application failure with no secret disclosure.
+- Missing Key Vault secret and dependency failures receive safe application failures.
+- The Key Vault provider never exposes physical names, values, or raw Azure errors.
 
 Continuing security scenarios:
 

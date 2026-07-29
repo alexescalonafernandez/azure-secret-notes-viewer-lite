@@ -1,13 +1,12 @@
 # Cost and teardown operations
 
-This document is conceptual for the B4-D0 baseline. It does not include executable deployment or deletion commands.
+This document remains non-executable. B4-D7 adds a repository definition for one development Resource Group and one Standard Key Vault, but the repository owner has not deployed them at branch-publication time.
 
 ## Planned Azure resources
 
-- Resource Group.
+- Development Resource Group and Standard Key Vault: implemented in Bicep; planned manual deployment.
 - Azure App Service Plan for low-cost learning usage.
 - Azure App Service with system-assigned Managed Identity.
-- Azure Key Vault using Azure RBAC.
 - Application Insights connected to a Log Analytics workspace, with implementation deferred to a later milestone.
 - Microsoft Entra ID application registration, service principal, and app role created through manual documented bootstrap.
 
@@ -15,7 +14,7 @@ This document is conceptual for the B4-D0 baseline. It does not include executab
 
 - App Service Plan compute charges while allocated.
 - Application Insights and connected Log Analytics workspace ingestion, sampling, and retention when implemented later.
-- Key Vault operations, storage, and optional retention-related costs.
+- Standard Key Vault operations and retained secret versions after owner deployment.
 - Incidental costs from diagnostic settings or retained logs.
 
 ## Rules for keeping costs low
@@ -25,6 +24,7 @@ This document is conceptual for the B4-D0 baseline. It does not include executab
 - Avoid duplicate environments unless explicitly needed.
 - Keep observability moderate and avoid verbose request, dependency, or custom-event logging.
 - Remove resources promptly when validation is complete.
+- Keep only the three required synthetic secrets and their single initial versions.
 - Do not use production-grade scale, premium tiers, or long retention unless a later decision explicitly requires them.
 
 ## Moderate observability and telemetry usage
@@ -44,20 +44,20 @@ Remove Azure resources when:
 ## Conceptual teardown order
 
 1. Capture only non-sensitive validation evidence.
-2. Remove app-role assignments that are no longer needed.
-3. Remove Key Vault Azure RBAC assignments for the Managed Identity.
-4. Delete the App Service to remove the system-assigned Managed Identity.
-5. Delete or purge Key Vault according to the documented retention and recovery plan.
-6. Delete the App Service Plan when no apps depend on it.
-7. Delete the Resource Group after confirming no required resources remain.
-8. Manually review Microsoft Entra ID objects and remove application registrations or service principals that are no longer needed.
+2. Confirm the temporary `Key Vault Secrets Officer` assignment is absent.
+3. Remove the development user's final vault-scoped `Key Vault Secrets User` assignment when it is no longer needed.
+4. Delete the development Resource Group only after confirming it contains no required resources.
+5. Allow the purge-protected Key Vault to complete its seven-day soft-delete retention period; it cannot be purged early.
+6. For later milestones, remove application RBAC, App Service, plan, telemetry, and Entra objects in dependency order.
+
+Deleting the Resource Group does not make the vault name immediately reusable. Purge protection deliberately trades rapid teardown for recovery safety. B4-D7 includes no deletion or purge script, and repository automation must not be treated as authorization to perform teardown.
 
 ## Possible orphaned resources or identities
 
 - Microsoft Entra ID application registrations and service principals created manually.
 - App-role assignments on users or groups.
-- Azure RBAC role assignments whose principal was deleted with the App Service Managed Identity.
-- Retained Key Vault instances or soft-deleted vaults.
+- Azure RBAC role assignments that were not removed before resource deletion.
+- The soft-deleted, purge-protected Key Vault during its seven-day retention period.
 - Application Insights components, connected Log Analytics workspaces, or diagnostic settings created later.
 
 ## Validation after teardown
