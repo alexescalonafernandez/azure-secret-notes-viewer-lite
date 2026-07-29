@@ -8,7 +8,7 @@ if (-not (Test-Path -LiteralPath $parameterFile)) { throw 'local-parameter-file-
 if ([string]::IsNullOrWhiteSpace($subscriptionId)) { throw 'subscription-context-invalid' }
 if ($null -eq (Get-Command az -ErrorAction SilentlyContinue)) { throw 'azure-cli-unavailable' }
 
-$verifiedSubscriptionId = (
+$availableSubscriptionId = (
   & az account show `
     --subscription $subscriptionId `
     --query id `
@@ -17,9 +17,32 @@ $verifiedSubscriptionId = (
 )
 if (
   $LASTEXITCODE -ne 0 -or
-  [string]::IsNullOrWhiteSpace($verifiedSubscriptionId) -or
+  [string]::IsNullOrWhiteSpace($availableSubscriptionId) -or
   -not [string]::Equals(
-    $verifiedSubscriptionId.Trim(),
+    $availableSubscriptionId.Trim(),
+    $subscriptionId.Trim(),
+    [StringComparison]::OrdinalIgnoreCase
+  )
+) { throw 'subscription-context-invalid' }
+
+$null = & az account set `
+  --subscription $subscriptionId `
+  --only-show-errors `
+  --output none 2>$null
+if ($LASTEXITCODE -ne 0) { throw 'subscription-context-invalid' }
+
+$activeSubscriptionId = (
+  & az account show `
+    --subscription $subscriptionId `
+    --query id `
+    --output tsv `
+    --only-show-errors 2>$null
+)
+if (
+  $LASTEXITCODE -ne 0 -or
+  [string]::IsNullOrWhiteSpace($activeSubscriptionId) -or
+  -not [string]::Equals(
+    $activeSubscriptionId.Trim(),
     $subscriptionId.Trim(),
     [StringComparison]::OrdinalIgnoreCase
   )
@@ -27,7 +50,6 @@ if (
 
 $developmentReaderPrincipalId = (
   & az ad signed-in-user show `
-    --subscription $subscriptionId `
     --query id `
     --output tsv `
     --only-show-errors 2>$null

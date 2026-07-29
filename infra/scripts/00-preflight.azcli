@@ -12,7 +12,7 @@ if ($LASTEXITCODE -ne 0) { throw 'azure-cli-unavailable' }
 $null = & az bicep version 2>$null
 if ($LASTEXITCODE -ne 0) { throw 'bicep-cli-unavailable' }
 
-$verifiedSubscriptionId = (
+$availableSubscriptionId = (
   & az account show `
     --subscription $subscriptionId `
     --query id `
@@ -21,9 +21,32 @@ $verifiedSubscriptionId = (
 )
 if (
   $LASTEXITCODE -ne 0 -or
-  [string]::IsNullOrWhiteSpace($verifiedSubscriptionId) -or
+  [string]::IsNullOrWhiteSpace($availableSubscriptionId) -or
   -not [string]::Equals(
-    $verifiedSubscriptionId.Trim(),
+    $availableSubscriptionId.Trim(),
+    $subscriptionId.Trim(),
+    [StringComparison]::OrdinalIgnoreCase
+  )
+) { throw 'subscription-context-invalid' }
+
+$null = & az account set `
+  --subscription $subscriptionId `
+  --only-show-errors `
+  --output none 2>$null
+if ($LASTEXITCODE -ne 0) { throw 'subscription-context-invalid' }
+
+$activeSubscriptionId = (
+  & az account show `
+    --subscription $subscriptionId `
+    --query id `
+    --output tsv `
+    --only-show-errors 2>$null
+)
+if (
+  $LASTEXITCODE -ne 0 -or
+  [string]::IsNullOrWhiteSpace($activeSubscriptionId) -or
+  -not [string]::Equals(
+    $activeSubscriptionId.Trim(),
     $subscriptionId.Trim(),
     [StringComparison]::OrdinalIgnoreCase
   )
@@ -31,7 +54,6 @@ if (
 
 $developmentReaderPrincipalId = (
   & az ad signed-in-user show `
-    --subscription $subscriptionId `
     --query id `
     --output tsv `
     --only-show-errors 2>$null

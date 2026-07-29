@@ -17,7 +17,7 @@ try {
         exit 1
     }
 
-    $verifiedSubscriptionId = @(
+    $availableSubscriptionId = @(
         & az account show `
             --subscription $subscriptionId `
             --query id `
@@ -26,9 +26,36 @@ try {
     )
     if (
         $LASTEXITCODE -ne 0 -or
-        $verifiedSubscriptionId.Count -ne 1 -or
+        $availableSubscriptionId.Count -ne 1 -or
         -not [string]::Equals(
-            $verifiedSubscriptionId[0].Trim(),
+            $availableSubscriptionId[0].Trim(),
+            $subscriptionId.Trim(),
+            [StringComparison]::OrdinalIgnoreCase
+        )
+    ) {
+        exit 1
+    }
+
+    $null = & az account set `
+        --subscription $subscriptionId `
+        --only-show-errors `
+        --output none 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        exit 1
+    }
+
+    $activeSubscriptionId = @(
+        & az account show `
+            --subscription $subscriptionId `
+            --query id `
+            --output tsv `
+            --only-show-errors 2>$null
+    )
+    if (
+        $LASTEXITCODE -ne 0 -or
+        $activeSubscriptionId.Count -ne 1 -or
+        -not [string]::Equals(
+            $activeSubscriptionId[0].Trim(),
             $subscriptionId.Trim(),
             [StringComparison]::OrdinalIgnoreCase
         )
@@ -38,7 +65,6 @@ try {
 
     $developmentReaderPrincipalId = @(
         & az ad signed-in-user show `
-            --subscription $subscriptionId `
             --query id `
             --output tsv `
             --only-show-errors 2>$null

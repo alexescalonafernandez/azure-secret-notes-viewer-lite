@@ -39,7 +39,7 @@ Set the target subscription only in the current local shell:
 $env:AZURE_SUBSCRIPTION_ID = '<set-local-subscription-id>'
 ```
 
-Every workflow rejects a missing or whitespace value, verifies the target subscription without printing account details, and passes `--subscription` explicitly. Do not echo, log, screenshot, or commit the environment variable.
+Every workflow rejects a missing or whitespace value, verifies the target subscription without printing account details, sets it as the Azure CLI active subscription, and confirms the resulting context. Subscription- and resource-bound commands continue to pass `--subscription` explicitly. The tenant-bound `az ad signed-in-user show` command does not accept that option and runs only after the active subscription has been established. Do not echo, log, screenshot, or commit the environment variable.
 
 Copy the committed example to `infra/environments/development.bicepparam`, which is ignored by Git, and replace only the Resource Group name, vault name, and deployment-phase boolean. The development reader object ID is deliberately absent: `what-if` and deployment resolve the current signed-in user under the pinned subscription and pass that value to Bicep in memory. Bootstrap and final validation resolve the same current user under the same subscription context.
 
@@ -129,9 +129,9 @@ A direct assignment has a scope exactly equal to the individual vault. An inheri
 - bootstrap and cleanup enumerate all direct vault assignments, disable principal-name filling, and filter the exact vault scope locally;
 - final validation requires exactly one direct `Key Vault Secrets User` assignment for the current development user;
 - final validation requires no direct `Key Vault Secrets Officer` and no direct application or Managed Identity assignment at the vault; and
-- final validation separately includes inherited assignments and rejects any inherited role containing Key Vault data actions.
+- final validation separately queries inherited assignments effective for the current development user and its transitive groups, then rejects any inherited role containing Key Vault data actions.
 
-An inherited Key Vault data-plane role is an unsupported precondition because a successful read would no longer prove the intended vault-scoped reader assignment. Remove or narrow that inherited access through an independently reviewed administrative change before rerunning validation.
+The direct vault inspection remains global so a milestone-created Officer or application-identity assignment cannot be missed. The inherited inspection is principal-specific: unrelated assignments inherited by other users, groups, or workloads do not represent effective access for the development user and are excluded. An inherited Key Vault data-plane role effective for the user or its transitive groups is an unsupported precondition because a successful read would no longer prove the intended vault-scoped reader assignment. Remove or narrow that inherited access through an independently reviewed administrative change before rerunning validation.
 
 ## Security and failure behavior
 
@@ -145,7 +145,7 @@ The temporary Officer cleanup is attempted in `finally` using an assignment reso
 
 The scripts capture Azure responses locally and emit only coarse markers. Do not enable debug or verbose CLI output, copy raw terminal failures, or publish identifiers, vault URLs, physical names, role objects, secret values, or personal information as evidence.
 
-For safe manual investigation, use the Azure portal or Azure CLI only in a private local session. Keep `--subscription` explicit, disable principal-name filling, use narrow sanitized queries, and redirect raw errors away from shared output. Record only a coarse conclusion such as subscription mismatch, permission missing, propagation pending, vault non-empty, direct role invalid, or inherited data-plane permission present. Never paste raw errors, command arguments containing local values, IDs, URLs, principal data, physical names, or role-assignment objects into Issues, pull requests, chat, screenshots, or documentation.
+For safe manual investigation, use the Azure portal or Azure CLI only in a private local session. Establish the active subscription before tenant-bound `az ad` commands; keep `--subscription` explicit on subscription- and resource-bound commands, disable principal-name filling, use narrow sanitized queries, and redirect raw errors away from shared output. Record only a coarse conclusion such as subscription mismatch, permission missing, propagation pending, vault non-empty, direct role invalid, or inherited data-plane permission present. Never paste raw errors, command arguments containing local values, IDs, URLs, principal data, physical names, or role-assignment objects into Issues, pull requests, chat, screenshots, or documentation.
 
 ## Teardown constraint
 

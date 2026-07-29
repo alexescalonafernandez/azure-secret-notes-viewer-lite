@@ -40,14 +40,13 @@ $temporaryRoleCreationAttempted = $false
 $bootstrapSucceeded = $false
 $cleanupSucceeded = $true
 
-function Invoke-AzCli {
+function Invoke-AzCliUnscoped {
     param(
         [Parameter(Mandatory)]
         [string[]] $Arguments
     )
 
-    $effectiveArguments = @($Arguments) + @('--subscription', $script:subscriptionId)
-    $captured = @(& az @effectiveArguments 2>&1)
+    $captured = @(& az @Arguments 2>&1)
     $exitCode = $LASTEXITCODE
     $capturedText = ($captured | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
 
@@ -55,6 +54,16 @@ function Invoke-AzCli {
         ExitCode = $exitCode
         Output = $capturedText
     }
+}
+
+function Invoke-AzCli {
+    param(
+        [Parameter(Mandatory)]
+        [string[]] $Arguments
+    )
+
+    $effectiveArguments = @($Arguments) + @('--subscription', $script:subscriptionId)
+    return Invoke-AzCliUnscoped -Arguments $effectiveArguments
 }
 
 function Invoke-AzCliRequired {
@@ -69,6 +78,20 @@ function Invoke-AzCliRequired {
     }
 
     return $result.Output
+}
+
+function Get-SignedInUserObjectId {
+    $result = Invoke-AzCliUnscoped -Arguments @(
+        'ad', 'signed-in-user', 'show',
+        '--query', 'id',
+        '--output', 'tsv',
+        '--only-show-errors'
+    )
+    if ($result.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($result.Output)) {
+        throw 'signed-in-user-unavailable'
+    }
+
+    return $result.Output.Trim()
 }
 
 function ConvertFrom-SanitizedJson {
@@ -137,7 +160,7 @@ try {
         throw 'resource-input-invalid'
     }
 
-    $verifiedSubscriptionId = (
+    $availableSubscriptionId = (
         Invoke-AzCliRequired -Arguments @(
             'account', 'show',
             '--query', 'id',
@@ -147,7 +170,35 @@ try {
     ).Trim()
     if (
         -not [string]::Equals(
-            $verifiedSubscriptionId,
+            $availableSubscriptionId,
+            $subscriptionId.Trim(),
+            [StringComparison]::OrdinalIgnoreCase
+        )
+    ) {
+        throw 'subscription-context-invalid'
+    }
+
+    $setSubscriptionResult = Invoke-AzCliUnscoped -Arguments @(
+        'account', 'set',
+        '--subscription', $subscriptionId,
+        '--only-show-errors',
+        '--output', 'none'
+    )
+    if ($setSubscriptionResult.ExitCode -ne 0) {
+        throw 'subscription-context-invalid'
+    }
+
+    $activeSubscriptionId = (
+        Invoke-AzCliRequired -Arguments @(
+            'account', 'show',
+            '--query', 'id',
+            '--output', 'tsv',
+            '--only-show-errors'
+        )
+    ).Trim()
+    if (
+        -not [string]::Equals(
+            $activeSubscriptionId,
             $subscriptionId.Trim(),
             [StringComparison]::OrdinalIgnoreCase
         )
@@ -180,14 +231,7 @@ try {
         }
     }
 
-    $principalId = (
-        Invoke-AzCliRequired -Arguments @(
-            'ad', 'signed-in-user', 'show',
-            '--query', 'id',
-            '--output', 'tsv',
-            '--only-show-errors'
-        )
-    ).Trim()
+    $principalId = Get-SignedInUserObjectId
     if ([string]::IsNullOrWhiteSpace($principalId)) {
         throw 'signed-in-user-unavailable'
     }
