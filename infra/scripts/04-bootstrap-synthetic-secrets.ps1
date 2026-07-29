@@ -26,7 +26,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
-$subscriptionId = $env:AZURE_SUBSCRIPTION_ID
+$subscriptionId = $null
 $secretsOfficerRoleDefinitionId = 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7'
 $syntheticContentType = 'text/plain; purpose=synthetic-demo'
 $publicLogicalNoteIds = @(
@@ -39,60 +39,6 @@ $temporaryRoleAssignmentId = $null
 $temporaryRoleCreationAttempted = $false
 $bootstrapSucceeded = $false
 $cleanupSucceeded = $true
-
-function Invoke-AzCliUnscoped {
-    param(
-        [Parameter(Mandatory)]
-        [string[]] $Arguments
-    )
-
-    $captured = @(& az @Arguments 2>&1)
-    $exitCode = $LASTEXITCODE
-    $capturedText = ($captured | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
-
-    return [pscustomobject]@{
-        ExitCode = $exitCode
-        Output = $capturedText
-    }
-}
-
-function Invoke-AzCli {
-    param(
-        [Parameter(Mandatory)]
-        [string[]] $Arguments
-    )
-
-    $effectiveArguments = @($Arguments) + @('--subscription', $script:subscriptionId)
-    return Invoke-AzCliUnscoped -Arguments $effectiveArguments
-}
-
-function Invoke-AzCliRequired {
-    param(
-        [Parameter(Mandatory)]
-        [string[]] $Arguments
-    )
-
-    $result = Invoke-AzCli -Arguments $Arguments
-    if ($result.ExitCode -ne 0) {
-        throw 'azure-command-failed'
-    }
-
-    return $result.Output
-}
-
-function Get-SignedInUserObjectId {
-    $result = Invoke-AzCliUnscoped -Arguments @(
-        'ad', 'signed-in-user', 'show',
-        '--query', 'id',
-        '--output', 'tsv',
-        '--only-show-errors'
-    )
-    if ($result.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($result.Output)) {
-        throw 'signed-in-user-unavailable'
-    }
-
-    return $result.Output.Trim()
-}
 
 function ConvertFrom-SanitizedJson {
     param(
@@ -114,15 +60,20 @@ function Get-DirectVaultRoleAssignments {
         [string] $VaultScope
     )
 
-    $json = Invoke-AzCliRequired -Arguments @(
-        'role', 'assignment', 'list',
-        '--all',
-        '--scope', $VaultScope,
-        '--fill-principal-name', 'false',
-        '--query', '[].{roleDefinitionId:roleDefinitionId,principalId:principalId,principalType:principalType,scope:scope}',
-        '--output', 'json',
-        '--only-show-errors'
+    $jsonLines = @(
+        & az role assignment list `
+            --all `
+            --scope $VaultScope `
+            --fill-principal-name false `
+            --query '[].{roleDefinitionId:roleDefinitionId,principalId:principalId,principalType:principalType,scope:scope}' `
+            --subscription $script:subscriptionId `
+            --output json `
+            --only-show-errors 2>$null
     )
+    if ($LASTEXITCODE -ne 0) {
+        throw 'role-assignment-query-failed'
+    }
+    $json = $jsonLines -join [Environment]::NewLine
     $assignments = @(ConvertFrom-SanitizedJson -Json $json)
 
     return @(
@@ -153,58 +104,25 @@ function Assert-PrivateInput {
 
 try {
     if (
-        [string]::IsNullOrWhiteSpace($subscriptionId) -or
         [string]::IsNullOrWhiteSpace($ResourceGroupName) -or
         [string]::IsNullOrWhiteSpace($VaultName)
     ) {
         throw 'resource-input-invalid'
     }
 
-    $availableSubscriptionId = (
-        Invoke-AzCliRequired -Arguments @(
-            'account', 'show',
-            '--query', 'id',
-            '--output', 'tsv',
-            '--only-show-errors'
-        )
-    ).Trim()
-    if (
-        -not [string]::Equals(
-            $availableSubscriptionId,
-            $subscriptionId.Trim(),
-            [StringComparison]::OrdinalIgnoreCase
-        )
-    ) {
-        throw 'subscription-context-invalid'
-    }
-
-    $setSubscriptionResult = Invoke-AzCliUnscoped -Arguments @(
-        'account', 'set',
-        '--subscription', $subscriptionId,
-        '--only-show-errors',
-        '--output', 'none'
+    $subscriptionId = (
+        & az account show `
+            --query id `
+            --output tsv `
+            --only-show-errors 2>$null
     )
-    if ($setSubscriptionResult.ExitCode -ne 0) {
-        throw 'subscription-context-invalid'
-    }
-
-    $activeSubscriptionId = (
-        Invoke-AzCliRequired -Arguments @(
-            'account', 'show',
-            '--query', 'id',
-            '--output', 'tsv',
-            '--only-show-errors'
-        )
-    ).Trim()
     if (
-        -not [string]::Equals(
-            $activeSubscriptionId,
-            $subscriptionId.Trim(),
-            [StringComparison]::OrdinalIgnoreCase
-        )
+        $LASTEXITCODE -ne 0 -or
+        [string]::IsNullOrWhiteSpace($subscriptionId)
     ) {
         throw 'subscription-context-invalid'
     }
+    $subscriptionId = $subscriptionId.Trim()
 
     $fixtures = @(
         [pscustomobject]@{
@@ -231,24 +149,36 @@ try {
         }
     }
 
-    $principalId = Get-SignedInUserObjectId
-    if ([string]::IsNullOrWhiteSpace($principalId)) {
+    $principalId = (
+        & az ad signed-in-user show `
+            --query id `
+            --output tsv `
+            --only-show-errors 2>$null
+    )
+    if (
+        $LASTEXITCODE -ne 0 -or
+        [string]::IsNullOrWhiteSpace($principalId)
+    ) {
         throw 'signed-in-user-unavailable'
     }
+    $principalId = $principalId.Trim()
 
     $vaultScope = (
-        Invoke-AzCliRequired -Arguments @(
-            'keyvault', 'show',
-            '--resource-group', $ResourceGroupName,
-            '--name', $VaultName,
-            '--query', 'id',
-            '--output', 'tsv',
-            '--only-show-errors'
-        )
-    ).Trim()
-    if ([string]::IsNullOrWhiteSpace($vaultScope)) {
+        & az keyvault show `
+            --resource-group $ResourceGroupName `
+            --name $VaultName `
+            --query id `
+            --subscription $subscriptionId `
+            --output tsv `
+            --only-show-errors 2>$null
+    )
+    if (
+        $LASTEXITCODE -ne 0 -or
+        [string]::IsNullOrWhiteSpace($vaultScope)
+    ) {
         throw 'vault-scope-unavailable'
     }
+    $vaultScope = $vaultScope.Trim()
 
     $existingOfficerAssignments = @(
         Get-DirectVaultRoleAssignments -VaultScope $vaultScope |
@@ -269,17 +199,16 @@ try {
         $temporaryRoleAssignmentName
     )
     $temporaryRoleCreationAttempted = $true
-    $createRoleResult = Invoke-AzCli -Arguments @(
-            'role', 'assignment', 'create',
-            '--name', $temporaryRoleAssignmentName,
-            '--assignee-object-id', $principalId,
-            '--assignee-principal-type', 'User',
-            '--role', $secretsOfficerRoleDefinitionId,
-            '--scope', $vaultScope,
-            '--output', 'none',
-            '--only-show-errors'
-        )
-    if ($createRoleResult.ExitCode -ne 0) {
+    $null = & az role assignment create `
+        --name $temporaryRoleAssignmentName `
+        --assignee-object-id $principalId `
+        --assignee-principal-type User `
+        --role $secretsOfficerRoleDefinitionId `
+        --scope $vaultScope `
+        --subscription $subscriptionId `
+        --output none `
+        --only-show-errors 2>$null
+    if ($LASTEXITCODE -ne 0) {
         throw 'temporary-officer-assignment-failed'
     }
 
@@ -287,14 +216,13 @@ try {
 
     $rbacReady = $false
     for ($attempt = 1; $attempt -le $PropagationMaxAttempts; $attempt++) {
-        $probe = Invoke-AzCli -Arguments @(
-            'keyvault', 'secret', 'list',
-            '--vault-name', $VaultName,
-            '--maxresults', '1',
-            '--output', 'none',
-            '--only-show-errors'
-        )
-        if ($probe.ExitCode -eq 0) {
+        $null = & az keyvault secret list `
+            --vault-name $VaultName `
+            --maxresults 1 `
+            --subscription $subscriptionId `
+            --output none `
+            --only-show-errors 2>$null
+        if ($LASTEXITCODE -eq 0) {
             $rbacReady = $true
             break
         }
@@ -308,13 +236,18 @@ try {
     }
     Write-Output 'temporary-officer-propagated'
 
-    $existingSecretNamesJson = Invoke-AzCliRequired -Arguments @(
-        'keyvault', 'secret', 'list',
-        '--vault-name', $VaultName,
-        '--query', '[].name',
-        '--output', 'json',
-        '--only-show-errors'
+    $existingSecretNamesJsonLines = @(
+        & az keyvault secret list `
+            --vault-name $VaultName `
+            --query '[].name' `
+            --subscription $subscriptionId `
+            --output json `
+            --only-show-errors 2>$null
     )
+    if ($LASTEXITCODE -ne 0) {
+        throw 'secret-list-failed'
+    }
+    $existingSecretNamesJson = $existingSecretNamesJsonLines -join [Environment]::NewLine
     $existingSecretNames = @(ConvertFrom-SanitizedJson -Json $existingSecretNamesJson)
     if ($existingSecretNames.Count -ne 0) {
         throw 'vault-not-empty'
@@ -327,29 +260,36 @@ try {
     )
 
     foreach ($fixture in $fixtures) {
-        $null = Invoke-AzCliRequired -Arguments @(
-            'keyvault', 'secret', 'set',
-            '--vault-name', $VaultName,
-            '--name', $fixture.Name,
-            '--value', $fixture.Value,
-            '--content-type', $syntheticContentType,
-            '--expires', $expirationArgument,
-            '--disabled', 'false',
-            '--output', 'none',
-            '--only-show-errors'
-        )
+        $null = & az keyvault secret set `
+            --vault-name $VaultName `
+            --name $fixture.Name `
+            --value $fixture.Value `
+            --content-type $syntheticContentType `
+            --expires $expirationArgument `
+            --disabled false `
+            --subscription $subscriptionId `
+            --output none `
+            --only-show-errors 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            throw 'synthetic-secret-creation-failed'
+        }
     }
     Write-Output 'synthetic-secrets-created'
 
     foreach ($fixture in $fixtures) {
-        $secretJson = Invoke-AzCliRequired -Arguments @(
-            'keyvault', 'secret', 'show',
-            '--vault-name', $VaultName,
-            '--name', $fixture.Name,
-            '--query', '{value:value,enabled:attributes.enabled,expires:attributes.expires,contentType:contentType}',
-            '--output', 'json',
-            '--only-show-errors'
+        $secretJsonLines = @(
+            & az keyvault secret show `
+                --vault-name $VaultName `
+                --name $fixture.Name `
+                --query '{value:value,enabled:attributes.enabled,expires:attributes.expires,contentType:contentType}' `
+                --subscription $subscriptionId `
+                --output json `
+                --only-show-errors 2>$null
         )
+        if ($LASTEXITCODE -ne 0) {
+            throw 'synthetic-secret-read-failed'
+        }
+        $secretJson = $secretJsonLines -join [Environment]::NewLine
         $secret = ConvertFrom-SanitizedJson -Json $secretJson
         $actualExpiration = [DateTimeOffset]::Parse(
             $secret.expires,
@@ -367,15 +307,18 @@ try {
         }
 
         $versionCountText = (
-            Invoke-AzCliRequired -Arguments @(
-                'keyvault', 'secret', 'list-versions',
-                '--vault-name', $VaultName,
-                '--name', $fixture.Name,
-                '--query', 'length(@)',
-                '--output', 'tsv',
-                '--only-show-errors'
-            )
-        ).Trim()
+            & az keyvault secret list-versions `
+                --vault-name $VaultName `
+                --name $fixture.Name `
+                --query 'length(@)' `
+                --subscription $subscriptionId `
+                --output tsv `
+                --only-show-errors 2>$null
+        )
+        if ($LASTEXITCODE -ne 0) {
+            throw 'synthetic-secret-version-query-failed'
+        }
+        $versionCountText = $versionCountText.Trim()
         if ($versionCountText -ne '1') {
             throw 'synthetic-secret-version-validation-failed'
         }
@@ -391,12 +334,11 @@ finally {
     if ($temporaryRoleCreationAttempted) {
         $cleanupSucceeded = $false
         for ($attempt = 1; $attempt -le $PropagationMaxAttempts; $attempt++) {
-            $null = Invoke-AzCli -Arguments @(
-                'role', 'assignment', 'delete',
-                '--ids', $temporaryRoleAssignmentId,
-                '--output', 'none',
-                '--only-show-errors'
-            )
+            $null = & az role assignment delete `
+                --ids $temporaryRoleAssignmentId `
+                --subscription $subscriptionId `
+                --output none `
+                --only-show-errors 2>$null
 
             try {
                 $remainingAssignments = @(

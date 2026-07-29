@@ -1,53 +1,29 @@
-# Run from the repository root in a PowerShell terminal.
+[CmdletBinding()]
+param()
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false
+
 # Set assignDevelopmentReaderRole in the ignored parameter file:
 # false for the initial deployment, then true for the final reader deployment.
 $parameterFile = 'infra/environments/development.bicepparam'
 $deploymentName = 'development-key-vault'
-$subscriptionId = $env:AZURE_SUBSCRIPTION_ID
 
 if (-not (Test-Path -LiteralPath $parameterFile)) { throw 'local-parameter-file-missing' }
-if ([string]::IsNullOrWhiteSpace($subscriptionId)) { throw 'subscription-context-invalid' }
 if ($null -eq (Get-Command az -ErrorAction SilentlyContinue)) { throw 'azure-cli-unavailable' }
 
-$availableSubscriptionId = (
+$subscriptionId = (
   & az account show `
-    --subscription $subscriptionId `
     --query id `
     --output tsv `
     --only-show-errors 2>$null
 )
 if (
   $LASTEXITCODE -ne 0 -or
-  [string]::IsNullOrWhiteSpace($availableSubscriptionId) -or
-  -not [string]::Equals(
-    $availableSubscriptionId.Trim(),
-    $subscriptionId.Trim(),
-    [StringComparison]::OrdinalIgnoreCase
-  )
+  [string]::IsNullOrWhiteSpace($subscriptionId)
 ) { throw 'subscription-context-invalid' }
-
-$null = & az account set `
-  --subscription $subscriptionId `
-  --only-show-errors `
-  --output none 2>$null
-if ($LASTEXITCODE -ne 0) { throw 'subscription-context-invalid' }
-
-$activeSubscriptionId = (
-  & az account show `
-    --subscription $subscriptionId `
-    --query id `
-    --output tsv `
-    --only-show-errors 2>$null
-)
-if (
-  $LASTEXITCODE -ne 0 -or
-  [string]::IsNullOrWhiteSpace($activeSubscriptionId) -or
-  -not [string]::Equals(
-    $activeSubscriptionId.Trim(),
-    $subscriptionId.Trim(),
-    [StringComparison]::OrdinalIgnoreCase
-  )
-) { throw 'subscription-context-invalid' }
+$subscriptionId = $subscriptionId.Trim()
 
 $developmentReaderPrincipalId = (
   & az ad signed-in-user show `
@@ -67,7 +43,7 @@ $developmentReaderPrincipalId = $developmentReaderPrincipalId.Trim()
   --template-file infra/main.bicep `
   --parameters $parameterFile "developmentReaderPrincipalId=$developmentReaderPrincipalId" `
   --only-show-errors `
-  --query "properties.provisioningState" `
-  --output tsv 2>$null
+  --output none 2>$null
 
 if ($LASTEXITCODE -ne 0) { throw 'development-key-vault-deployment-failed' }
+Write-Output 'development-key-vault-deployed'

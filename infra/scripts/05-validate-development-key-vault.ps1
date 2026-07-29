@@ -26,7 +26,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
-$subscriptionId = $env:AZURE_SUBSCRIPTION_ID
+$subscriptionId = $null
 $secretsUserRoleDefinitionId = '4633458b-17de-408a-b874-0445c86b69e6'
 $secretsOfficerRoleDefinitionId = 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7'
 $syntheticContentType = 'text/plain; purpose=synthetic-demo'
@@ -35,61 +35,6 @@ $publicLogicalNoteIds = @(
     'demo-integration-note'
     'demo-recovery-note'
 )
-
-function Invoke-AzCliUnscoped {
-    param(
-        [Parameter(Mandatory)]
-        [string[]] $Arguments
-    )
-
-    $captured = @(& az @Arguments 2>&1)
-    $exitCode = $LASTEXITCODE
-    $capturedText = ($captured | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
-
-    return [pscustomobject]@{
-        ExitCode = $exitCode
-        Output = $capturedText
-    }
-}
-
-function Invoke-AzCli {
-    param(
-        [Parameter(Mandatory)]
-        [string[]] $Arguments
-    )
-
-    $effectiveArguments = @($Arguments) + @('--subscription', $script:subscriptionId)
-    return Invoke-AzCliUnscoped -Arguments $effectiveArguments
-}
-
-function Invoke-AzCliRequired {
-    param(
-        [Parameter(Mandatory)]
-        [string[]] $Arguments
-    )
-
-    $result = Invoke-AzCli -Arguments $Arguments
-    $exitCode = $result.ExitCode
-    if ($exitCode -ne 0) {
-        throw 'azure-command-failed'
-    }
-
-    return $result.Output
-}
-
-function Get-SignedInUserObjectId {
-    $result = Invoke-AzCliUnscoped -Arguments @(
-        'ad', 'signed-in-user', 'show',
-        '--query', 'id',
-        '--output', 'tsv',
-        '--only-show-errors'
-    )
-    if ($result.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($result.Output)) {
-        throw 'signed-in-user-unavailable'
-    }
-
-    return $result.Output.Trim()
-}
 
 function ConvertFrom-SanitizedJson {
     param(
@@ -137,6 +82,7 @@ function Get-VaultRoleAssignments {
         '--fill-principal-name', 'false',
         '--fill-role-definition-name', 'false',
         '--query', '[].{roleDefinitionId:roleDefinitionId,principalId:principalId,principalType:principalType,scope:scope}',
+        '--subscription', $script:subscriptionId,
         '--output', 'json',
         '--only-show-errors'
     )
@@ -152,7 +98,11 @@ function Get-VaultRoleAssignments {
         )
     }
 
-    $json = Invoke-AzCliRequired -Arguments $arguments
+    $jsonLines = @(& az @arguments 2>$null)
+    if ($LASTEXITCODE -ne 0) {
+        throw 'role-assignment-query-failed'
+    }
+    $json = $jsonLines -join [Environment]::NewLine
     return @(ConvertFrom-SanitizedJson -Json $json)
 }
 
@@ -167,13 +117,18 @@ function Test-RoleHasKeyVaultDataActions {
     }
 
     $roleDefinitionName = $RoleDefinitionId.TrimEnd('/').Split('/')[-1]
-    $json = Invoke-AzCliRequired -Arguments @(
-        'role', 'definition', 'list',
-        '--name', $roleDefinitionName,
-        '--query', '[0].permissions[].dataActions[]',
-        '--output', 'json',
-        '--only-show-errors'
+    $jsonLines = @(
+        & az role definition list `
+            --name $roleDefinitionName `
+            --query '[0].permissions[].dataActions[]' `
+            --subscription $script:subscriptionId `
+            --output json `
+            --only-show-errors 2>$null
     )
+    if ($LASTEXITCODE -ne 0) {
+        throw 'role-definition-query-failed'
+    }
+    $json = $jsonLines -join [Environment]::NewLine
     $dataActions = @(ConvertFrom-SanitizedJson -Json $json)
 
     return @(
@@ -185,58 +140,25 @@ function Test-RoleHasKeyVaultDataActions {
 
 try {
     if (
-        [string]::IsNullOrWhiteSpace($subscriptionId) -or
         [string]::IsNullOrWhiteSpace($ResourceGroupName) -or
         [string]::IsNullOrWhiteSpace($VaultName)
     ) {
         throw 'resource-input-invalid'
     }
 
-    $availableSubscriptionId = (
-        Invoke-AzCliRequired -Arguments @(
-            'account', 'show',
-            '--query', 'id',
-            '--output', 'tsv',
-            '--only-show-errors'
-        )
-    ).Trim()
-    if (
-        -not [string]::Equals(
-            $availableSubscriptionId,
-            $subscriptionId.Trim(),
-            [StringComparison]::OrdinalIgnoreCase
-        )
-    ) {
-        throw 'subscription-context-invalid'
-    }
-
-    $setSubscriptionResult = Invoke-AzCliUnscoped -Arguments @(
-        'account', 'set',
-        '--subscription', $subscriptionId,
-        '--only-show-errors',
-        '--output', 'none'
+    $subscriptionId = (
+        & az account show `
+            --query id `
+            --output tsv `
+            --only-show-errors 2>$null
     )
-    if ($setSubscriptionResult.ExitCode -ne 0) {
-        throw 'subscription-context-invalid'
-    }
-
-    $activeSubscriptionId = (
-        Invoke-AzCliRequired -Arguments @(
-            'account', 'show',
-            '--query', 'id',
-            '--output', 'tsv',
-            '--only-show-errors'
-        )
-    ).Trim()
     if (
-        -not [string]::Equals(
-            $activeSubscriptionId,
-            $subscriptionId.Trim(),
-            [StringComparison]::OrdinalIgnoreCase
-        )
+        $LASTEXITCODE -ne 0 -or
+        [string]::IsNullOrWhiteSpace($subscriptionId)
     ) {
         throw 'subscription-context-invalid'
     }
+    $subscriptionId = $subscriptionId.Trim()
 
     $fixtures = @(
         [pscustomobject]@{
@@ -263,19 +185,33 @@ try {
         }
     }
 
-    $principalId = Get-SignedInUserObjectId
-    if ([string]::IsNullOrWhiteSpace($principalId)) {
+    $principalId = (
+        & az ad signed-in-user show `
+            --query id `
+            --output tsv `
+            --only-show-errors 2>$null
+    )
+    if (
+        $LASTEXITCODE -ne 0 -or
+        [string]::IsNullOrWhiteSpace($principalId)
+    ) {
         throw 'signed-in-user-unavailable'
     }
+    $principalId = $principalId.Trim()
 
-    $vaultJson = Invoke-AzCliRequired -Arguments @(
-        'keyvault', 'show',
-        '--resource-group', $ResourceGroupName,
-        '--name', $VaultName,
-        '--query', '{sku:properties.sku.name,rbac:properties.enableRbacAuthorization,purge:properties.enablePurgeProtection,retention:properties.softDeleteRetentionInDays,publicNetworkAccess:properties.publicNetworkAccess,scope:id}',
-        '--output', 'json',
-        '--only-show-errors'
+    $vaultJsonLines = @(
+        & az keyvault show `
+            --resource-group $ResourceGroupName `
+            --name $VaultName `
+            --query '{sku:properties.sku.name,rbac:properties.enableRbacAuthorization,purge:properties.enablePurgeProtection,retention:properties.softDeleteRetentionInDays,publicNetworkAccess:properties.publicNetworkAccess,scope:id}' `
+            --subscription $subscriptionId `
+            --output json `
+            --only-show-errors 2>$null
     )
+    if ($LASTEXITCODE -ne 0) {
+        throw 'vault-query-failed'
+    }
+    $vaultJson = $vaultJsonLines -join [Environment]::NewLine
     $vault = ConvertFrom-SanitizedJson -Json $vaultJson
     if (
         $vault.sku -ine 'standard' -or
@@ -291,14 +227,13 @@ try {
 
     $readerReady = $false
     for ($attempt = 1; $attempt -le $PropagationMaxAttempts; $attempt++) {
-        $probe = Invoke-AzCli -Arguments @(
-            'keyvault', 'secret', 'list',
-            '--vault-name', $VaultName,
-            '--maxresults', '1',
-            '--output', 'none',
-            '--only-show-errors'
-        )
-        if ($probe.ExitCode -eq 0) {
+        $null = & az keyvault secret list `
+            --vault-name $VaultName `
+            --maxresults 1 `
+            --subscription $subscriptionId `
+            --output none `
+            --only-show-errors 2>$null
+        if ($LASTEXITCODE -eq 0) {
             $readerReady = $true
             break
         }
@@ -312,13 +247,18 @@ try {
     }
     Write-Output 'reader-access-propagated'
 
-    $listedSecretsJson = Invoke-AzCliRequired -Arguments @(
-        'keyvault', 'secret', 'list',
-        '--vault-name', $VaultName,
-        '--query', '[].{name:name,enabled:attributes.enabled,expires:attributes.expires}',
-        '--output', 'json',
-        '--only-show-errors'
+    $listedSecretsJsonLines = @(
+        & az keyvault secret list `
+            --vault-name $VaultName `
+            --query '[].{name:name,enabled:attributes.enabled,expires:attributes.expires}' `
+            --subscription $subscriptionId `
+            --output json `
+            --only-show-errors 2>$null
     )
+    if ($LASTEXITCODE -ne 0) {
+        throw 'secret-list-failed'
+    }
+    $listedSecretsJson = $listedSecretsJsonLines -join [Environment]::NewLine
     $listedSecrets = @(ConvertFrom-SanitizedJson -Json $listedSecretsJson)
     if ($listedSecrets.Count -ne 3) {
         throw 'synthetic-secret-count-invalid'
@@ -336,14 +276,19 @@ try {
             throw 'synthetic-secret-metadata-invalid'
         }
 
-        $secretJson = Invoke-AzCliRequired -Arguments @(
-            'keyvault', 'secret', 'show',
-            '--vault-name', $VaultName,
-            '--name', $fixture.Name,
-            '--query', '{value:value,enabled:attributes.enabled,created:attributes.created,expires:attributes.expires,contentType:contentType}',
-            '--output', 'json',
-            '--only-show-errors'
+        $secretJsonLines = @(
+            & az keyvault secret show `
+                --vault-name $VaultName `
+                --name $fixture.Name `
+                --query '{value:value,enabled:attributes.enabled,created:attributes.created,expires:attributes.expires,contentType:contentType}' `
+                --subscription $subscriptionId `
+                --output json `
+                --only-show-errors 2>$null
         )
+        if ($LASTEXITCODE -ne 0) {
+            throw 'synthetic-secret-read-failed'
+        }
+        $secretJson = $secretJsonLines -join [Environment]::NewLine
         $secret = ConvertFrom-SanitizedJson -Json $secretJson
         $createdUtc = [DateTimeOffset]::Parse(
             $secret.created,
@@ -366,15 +311,18 @@ try {
         }
 
         $versionCount = (
-            Invoke-AzCliRequired -Arguments @(
-                'keyvault', 'secret', 'list-versions',
-                '--vault-name', $VaultName,
-                '--name', $fixture.Name,
-                '--query', 'length(@)',
-                '--output', 'tsv',
-                '--only-show-errors'
-            )
-        ).Trim()
+            & az keyvault secret list-versions `
+                --vault-name $VaultName `
+                --name $fixture.Name `
+                --query 'length(@)' `
+                --subscription $subscriptionId `
+                --output tsv `
+                --only-show-errors 2>$null
+        )
+        if ($LASTEXITCODE -ne 0) {
+            throw 'synthetic-secret-version-query-failed'
+        }
+        $versionCount = $versionCount.Trim()
         if ($versionCount -ne '1') {
             throw 'synthetic-secret-version-validation-failed'
         }

@@ -2,7 +2,7 @@
 
 ## Status boundary
 
-- **Implemented in repository:** subscription-scope Bicep, three `.azcli` workflows, and three strict PowerShell validation/bootstrap scripts.
+- **Implemented in repository:** subscription-scope Bicep and six focused PowerShell workflow scripts.
 - **Planned manual execution:** the repository owner reviews `what-if`, performs both deployments, runs bootstrap, and retains only sanitized markers.
 - **Validated only after owner-run deployment:** actual Resource Group, vault, secret metadata, secret values, and Azure RBAC state.
 
@@ -11,8 +11,9 @@ No Azure or Microsoft Entra mutation was executed while preparing the repository
 ## Tool responsibilities
 
 - Bicep is the persistent desired-state source of truth for the Resource Group, Standard Key Vault, vault configuration, and optional final reader assignment.
-- `.azcli` files are simple, selectively executable workflows for local preflight, sanitized subscription-scope `what-if`, and subscription-scope deployment.
-- PowerShell owns procedural checks, bounded RBAC propagation, temporary access, local comparisons, cleanup, and sanitized evidence.
+- PowerShell owns execution, procedural checks, sanitized subscription-scope `what-if`, deployment, bounded RBAC propagation, temporary access, local comparisons, cleanup, and sanitized evidence.
+- All six workflows are `.ps1` files because they contain validation and control flow. `.azcli` is reserved for genuinely linear Azure CLI scrapbooks.
+- Each script is intentionally independent and readable; the repository does not use a shared command framework.
 
 ## Prerequisites
 
@@ -33,13 +34,9 @@ Control-plane deployment permission does not imply Key Vault secret access. Do n
 
 ## Local setup
 
-Set the target subscription only in the current local shell:
+Before running a workflow, privately select and verify the intended Azure CLI active subscription using the owner's normal local CLI process. Do not publish the resulting account output or identifiers. The scripts rely on that preselected context and never call `az account set`.
 
-```powershell
-$env:AZURE_SUBSCRIPTION_ID = '<set-local-subscription-id>'
-```
-
-Every workflow rejects a missing or whitespace value, verifies the target subscription without printing account details, sets it as the Azure CLI active subscription, and confirms the resulting context. Subscription- and resource-bound commands continue to pass `--subscription` explicitly. The tenant-bound `az ad signed-in-user show` command does not accept that option and runs only after the active subscription has been established. Do not echo, log, screenshot, or commit the environment variable.
+Each script captures the active subscription once with a sanitized `az account show`, rejects a missing or unauthenticated context, and does not print the captured value. Subscription- and resource-bound commands continue to pass the captured value through `--subscription`. The tenant-bound `az ad signed-in-user show` command does not accept that option and runs only after the active context has been captured.
 
 Copy the committed example to `infra/environments/development.bicepparam`, which is ignored by Git, and replace only the Resource Group name, vault name, and deployment-phase boolean. The development reader object ID is deliberately absent: `what-if` and deployment resolve the current signed-in user under the pinned subscription and pass that value to Bicep in memory. Bootstrap and final validation resolve the same current user under the same subscription context.
 
@@ -49,11 +46,11 @@ Never publish the local parameter file or its values. Do not change the signed-i
 
 Run each step selectively from the repository root in a PowerShell terminal. Stop on any failure.
 
-1. Set `AZURE_SUBSCRIPTION_ID` in the current shell and copy the example parameter file to the ignored local filename.
+1. Privately select and verify the intended Azure CLI active subscription, then copy the example parameter file to the ignored local filename.
 2. Set the local Resource Group name and vault name. Keep `assignDevelopmentReaderRole = false`.
-3. Run `infra/scripts/00-preflight.azcli`.
-4. Run `infra/scripts/01-what-if-development-key-vault.azcli` and review the sanitized change and resource types.
-5. Run `infra/scripts/02-deploy-development-key-vault.azcli`.
+3. Run `infra/scripts/00-preflight.ps1`.
+4. Run `infra/scripts/01-what-if-development-key-vault.ps1` and review the sanitized change and resource types.
+5. Run `infra/scripts/02-deploy-development-key-vault.ps1`.
 6. Run `infra/scripts/03-validate-control-data-plane-separation.ps1` with the local vault name. Its only successful output is `data-plane-denied-before-assignment`.
 7. Run `infra/scripts/04-bootstrap-synthetic-secrets.ps1` with the local Resource Group name, vault name, and three private physical secret names.
 8. Change only `assignDevelopmentReaderRole` to `true` in the ignored parameter file.
@@ -145,7 +142,7 @@ The temporary Officer cleanup is attempted in `finally` using an assignment reso
 
 The scripts capture Azure responses locally and emit only coarse markers. Do not enable debug or verbose CLI output, copy raw terminal failures, or publish identifiers, vault URLs, physical names, role objects, secret values, or personal information as evidence.
 
-For safe manual investigation, use the Azure portal or Azure CLI only in a private local session. Establish the active subscription before tenant-bound `az ad` commands; keep `--subscription` explicit on subscription- and resource-bound commands, disable principal-name filling, use narrow sanitized queries, and redirect raw errors away from shared output. Record only a coarse conclusion such as subscription mismatch, permission missing, propagation pending, vault non-empty, direct role invalid, or inherited data-plane permission present. Never paste raw errors, command arguments containing local values, IDs, URLs, principal data, physical names, or role-assignment objects into Issues, pull requests, chat, screenshots, or documentation.
+For safe manual investigation, use the Azure portal or Azure CLI only in a private local session. Privately verify the active subscription before tenant-bound `az ad` commands; keep the captured subscription explicit on subscription- and resource-bound commands, disable principal-name filling, use narrow sanitized queries, and redirect raw errors away from shared output. Record only a coarse conclusion such as subscription mismatch, permission missing, propagation pending, vault non-empty, direct role invalid, or inherited data-plane permission present. Never paste raw errors, command arguments containing local values, IDs, URLs, principal data, physical names, or role-assignment objects into Issues, pull requests, chat, screenshots, or documentation.
 
 ## Teardown constraint
 

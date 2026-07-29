@@ -30,7 +30,7 @@ The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages w
 
 `B4-D7 — Development Key Vault Infrastructure and RBAC Bootstrap`
 
-The repository now implements subscription-scope Bicep for a dedicated development Resource Group, a Standard Key Vault in West Europe, and an optional vault-scoped `Key Vault Secrets User` assignment. Simple `.azcli` workflows cover local preflight, sanitized `what-if`, and deployment; strict PowerShell workflows cover negative data-plane validation, temporary bootstrap access, synthetic-secret creation, cleanup, and final validation.
+The repository now implements subscription-scope Bicep for a dedicated development Resource Group, a Standard Key Vault in West Europe, and an optional vault-scoped `Key Vault Secrets User` assignment. Six focused PowerShell workflows cover local preflight, sanitized `what-if`, deployment, negative data-plane validation, temporary bootstrap access, synthetic-secret creation, cleanup, and final validation. They use PowerShell because the workflows contain validation and control flow; `.azcli` remains reserved for genuinely linear Azure CLI scrapbooks.
 
 This branch contains implementation only. Azure deployment and validation are planned manual owner actions after review. Application behavior is unchanged: `INoteContentProvider` still resolves to `InMemoryNoteContentProvider`; Key Vault application integration, App Service, Managed Identity, telemetry, and CI/CD remain deferred.
 

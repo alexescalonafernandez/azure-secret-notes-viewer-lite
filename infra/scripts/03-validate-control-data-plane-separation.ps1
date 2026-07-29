@@ -9,61 +9,25 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
 try {
-    $subscriptionId = $env:AZURE_SUBSCRIPTION_ID
+    if ([string]::IsNullOrWhiteSpace($VaultName)) {
+        exit 1
+    }
+
+    $subscriptionId = (
+        & az account show `
+            --query id `
+            --output tsv `
+            --only-show-errors 2>$null
+    )
     if (
-        [string]::IsNullOrWhiteSpace($VaultName) -or
+        $LASTEXITCODE -ne 0 -or
         [string]::IsNullOrWhiteSpace($subscriptionId)
     ) {
         exit 1
     }
+    $subscriptionId = $subscriptionId.Trim()
 
-    $availableSubscriptionId = @(
-        & az account show `
-            --subscription $subscriptionId `
-            --query id `
-            --output tsv `
-            --only-show-errors 2>$null
-    )
-    if (
-        $LASTEXITCODE -ne 0 -or
-        $availableSubscriptionId.Count -ne 1 -or
-        -not [string]::Equals(
-            $availableSubscriptionId[0].Trim(),
-            $subscriptionId.Trim(),
-            [StringComparison]::OrdinalIgnoreCase
-        )
-    ) {
-        exit 1
-    }
-
-    $null = & az account set `
-        --subscription $subscriptionId `
-        --only-show-errors `
-        --output none 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        exit 1
-    }
-
-    $activeSubscriptionId = @(
-        & az account show `
-            --subscription $subscriptionId `
-            --query id `
-            --output tsv `
-            --only-show-errors 2>$null
-    )
-    if (
-        $LASTEXITCODE -ne 0 -or
-        $activeSubscriptionId.Count -ne 1 -or
-        -not [string]::Equals(
-            $activeSubscriptionId[0].Trim(),
-            $subscriptionId.Trim(),
-            [StringComparison]::OrdinalIgnoreCase
-        )
-    ) {
-        exit 1
-    }
-
-    $developmentReaderPrincipalId = @(
+    $developmentReaderPrincipalId = (
         & az ad signed-in-user show `
             --query id `
             --output tsv `
@@ -71,8 +35,7 @@ try {
     )
     if (
         $LASTEXITCODE -ne 0 -or
-        $developmentReaderPrincipalId.Count -ne 1 -or
-        [string]::IsNullOrWhiteSpace($developmentReaderPrincipalId[0])
+        [string]::IsNullOrWhiteSpace($developmentReaderPrincipalId)
     ) {
         exit 1
     }
