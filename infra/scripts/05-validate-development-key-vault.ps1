@@ -13,16 +13,45 @@ param(
     [string] $IntegrationSecretName,
 
     [Parameter(Mandatory)]
-    [string] $RecoverySecretName
+    [string] $RecoverySecretName,
+
+    [ValidateRange(1, 60)]
+    [int] $PropagationMaxAttempts = 12,
+
+    [ValidateRange(1, 60)]
+    [int] $PropagationDelaySeconds = 10
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
+$subscriptionId = $env:AZURE_SUBSCRIPTION_ID
 $secretsUserRoleDefinitionId = '4633458b-17de-408a-b874-0445c86b69e6'
 $secretsOfficerRoleDefinitionId = 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7'
 $syntheticContentType = 'text/plain; purpose=synthetic-demo'
+$publicLogicalNoteIds = @(
+    'demo-operations-note'
+    'demo-integration-note'
+    'demo-recovery-note'
+)
+
+function Invoke-AzCli {
+    param(
+        [Parameter(Mandatory)]
+        [string[]] $Arguments
+    )
+
+    $effectiveArguments = @($Arguments) + @('--subscription', $script:subscriptionId)
+    $captured = @(& az @effectiveArguments 2>&1)
+    $exitCode = $LASTEXITCODE
+    $capturedText = ($captured | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+
+    return [pscustomobject]@{
+        ExitCode = $exitCode
+        Output = $capturedText
+    }
+}
 
 function Invoke-AzCliRequired {
     param(
@@ -30,13 +59,13 @@ function Invoke-AzCliRequired {
         [string[]] $Arguments
     )
 
-    $captured = @(& az @Arguments 2>&1)
-    $exitCode = $LASTEXITCODE
+    $result = Invoke-AzCli -Arguments $Arguments
+    $exitCode = $result.ExitCode
     if ($exitCode -ne 0) {
         throw 'azure-command-failed'
     }
 
-    return ($captured | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+    return $result.Output
 }
 
 function ConvertFrom-SanitizedJson {
@@ -59,14 +88,92 @@ function Assert-PrivateInput {
         [string] $Value
     )
 
-    if ([string]::IsNullOrWhiteSpace($Value) -or $Value -notmatch '^[A-Za-z0-9-]{1,127}$') {
+    if (
+        [string]::IsNullOrWhiteSpace($Value) -or
+        $Value -notmatch '^[A-Za-z0-9-]{1,127}$' -or
+        $script:publicLogicalNoteIds -icontains $Value
+    ) {
         throw 'private-input-invalid'
     }
 }
 
+function Get-VaultRoleAssignments {
+    param(
+        [Parameter(Mandatory)]
+        [string] $VaultScope,
+
+        [switch] $IncludeInherited
+    )
+
+    $arguments = @(
+        'role', 'assignment', 'list',
+        '--all',
+        '--scope', $VaultScope,
+        '--fill-principal-name', 'false',
+        '--query', '[].{roleDefinitionId:roleDefinitionId,principalId:principalId,principalType:principalType,scope:scope}',
+        '--output', 'json',
+        '--only-show-errors'
+    )
+    if ($IncludeInherited) {
+        $arguments += '--include-inherited'
+    }
+
+    $json = Invoke-AzCliRequired -Arguments $arguments
+    return @(ConvertFrom-SanitizedJson -Json $json)
+}
+
+function Test-RoleHasKeyVaultDataActions {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RoleDefinitionId
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RoleDefinitionId)) {
+        throw 'role-definition-invalid'
+    }
+
+    $roleDefinitionName = $RoleDefinitionId.TrimEnd('/').Split('/')[-1]
+    $json = Invoke-AzCliRequired -Arguments @(
+        'role', 'definition', 'list',
+        '--name', $roleDefinitionName,
+        '--query', '[0].permissions[].dataActions[]',
+        '--output', 'json',
+        '--only-show-errors'
+    )
+    $dataActions = @(ConvertFrom-SanitizedJson -Json $json)
+
+    return @(
+        $dataActions | Where-Object {
+            $_ -eq '*' -or $_ -like 'Microsoft.KeyVault/*'
+        }
+    ).Count -gt 0
+}
+
 try {
-    if ([string]::IsNullOrWhiteSpace($ResourceGroupName) -or [string]::IsNullOrWhiteSpace($VaultName)) {
+    if (
+        [string]::IsNullOrWhiteSpace($subscriptionId) -or
+        [string]::IsNullOrWhiteSpace($ResourceGroupName) -or
+        [string]::IsNullOrWhiteSpace($VaultName)
+    ) {
         throw 'resource-input-invalid'
+    }
+
+    $verifiedSubscriptionId = (
+        Invoke-AzCliRequired -Arguments @(
+            'account', 'show',
+            '--query', 'id',
+            '--output', 'tsv',
+            '--only-show-errors'
+        )
+    ).Trim()
+    if (
+        -not [string]::Equals(
+            $verifiedSubscriptionId,
+            $subscriptionId.Trim(),
+            [StringComparison]::OrdinalIgnoreCase
+        )
+    ) {
+        throw 'subscription-context-invalid'
     }
 
     $fixtures = @(
@@ -126,6 +233,29 @@ try {
         throw 'vault-configuration-invalid'
     }
     Write-Output 'vault-configuration-valid'
+
+    $readerReady = $false
+    for ($attempt = 1; $attempt -le $PropagationMaxAttempts; $attempt++) {
+        $probe = Invoke-AzCli -Arguments @(
+            'keyvault', 'secret', 'list',
+            '--vault-name', $VaultName,
+            '--maxresults', '1',
+            '--output', 'none',
+            '--only-show-errors'
+        )
+        if ($probe.ExitCode -eq 0) {
+            $readerReady = $true
+            break
+        }
+
+        if ($attempt -lt $PropagationMaxAttempts) {
+            Start-Sleep -Seconds $PropagationDelaySeconds
+        }
+    }
+    if (-not $readerReady) {
+        throw 'reader-propagation-timeout'
+    }
+    Write-Output 'reader-access-propagated'
 
     $listedSecretsJson = Invoke-AzCliRequired -Arguments @(
         'keyvault', 'secret', 'list',
@@ -196,16 +326,15 @@ try {
     }
     Write-Output 'synthetic-secrets-valid'
 
-    $roleAssignmentsJson = Invoke-AzCliRequired -Arguments @(
-        'role', 'assignment', 'list',
-        '--scope', $vault.scope,
-        '--query', '[].{roleDefinitionId:roleDefinitionId,principalId:principalId,principalType:principalType,scope:scope}',
-        '--output', 'json',
-        '--only-show-errors'
-    )
     $exactVaultAssignments = @(
-        @(ConvertFrom-SanitizedJson -Json $roleAssignmentsJson) |
-            Where-Object { $_.scope -eq $vault.scope }
+        Get-VaultRoleAssignments -VaultScope $vault.scope |
+            Where-Object {
+                [string]::Equals(
+                    $_.scope,
+                    $vault.scope,
+                    [StringComparison]::OrdinalIgnoreCase
+                )
+            }
     )
     $readerAssignments = @(
         $exactVaultAssignments | Where-Object {
@@ -237,6 +366,32 @@ try {
         $applicationIdentityAssignments.Count -ne 0
     ) {
         throw 'vault-role-state-invalid'
+    }
+
+    $effectiveVaultAssignments = @(
+        Get-VaultRoleAssignments `
+            -VaultScope $vault.scope `
+            -IncludeInherited
+    )
+    $inheritedAssignments = @(
+        $effectiveVaultAssignments | Where-Object {
+            -not [string]::Equals(
+                $_.scope,
+                $vault.scope,
+                [StringComparison]::OrdinalIgnoreCase
+            )
+        }
+    )
+    $inheritedRoleDefinitionIds = @(
+        $inheritedAssignments |
+            ForEach-Object { $_.roleDefinitionId } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Sort-Object -Unique
+    )
+    foreach ($inheritedRoleDefinitionId in $inheritedRoleDefinitionIds) {
+        if (Test-RoleHasKeyVaultDataActions -RoleDefinitionId $inheritedRoleDefinitionId) {
+            throw 'inherited-data-plane-permission-unsupported'
+        }
     }
     Write-Output 'vault-role-state-valid'
 

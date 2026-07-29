@@ -66,7 +66,7 @@ Browser
 
 `ReadSecretNotes` requires `SecretNotes.Reader`. Anonymous requests to `/Notes` are challenged, authenticated users without the required role are forbidden, and authenticated users with the role can execute the notes service and render the fixed catalog. The authenticated Notes navigation link is a convenience, not the authorization boundary; the server-side PageModel policy is the boundary.
 
-`ClosedNoteCatalog` owns membership, order, and display names. `ReadNotesService` requests content only for those definitions, and `INoteContentProvider` accepts only the closed `NoteId` value type. The provider cannot enumerate notes, raw identifier strings never reach it, and Razor accepts no identifier input. Logical IDs are not physical Key Vault names.
+`ClosedNoteCatalog` owns membership, order, and display names. `ReadNotesService` requests content only for those definitions, and `INoteContentProvider` accepts only the closed `NoteId` value type. The provider cannot enumerate notes, raw identifier strings never reach it, and Razor accepts no identifier input. Logical IDs are not physical Key Vault names. Operational scripts reject any physical name equal, case-insensitively, to any public logical `NoteId`.
 
 The Notes PageModel applies zero-duration, no-location, no-store response-cache behavior. Query strings cannot alter or expand the catalog. Integration tests exercise the boundary with non-identifying synthetic principals only. The synthetic authentication scheme exists only in the integration-test assembly, and production contains no test authentication bypass or test-header handling.
 
@@ -81,9 +81,13 @@ Subscription-scope main.bicep
 → optional individual-user Key Vault Secrets User assignment at vault scope
 ```
 
-Bicep is the source of truth for persistent state. The `.azcli` files are small, selectively executable VS Code workflows for preflight, sanitized `what-if`, and subscription deployment. PowerShell owns procedural behavior that needs local identity resolution, bounded RBAC propagation retries, value comparison, failure sanitization, and guaranteed cleanup.
+Bicep is the source of truth for persistent state. The `.azcli` files are small, selectively executable VS Code workflows for preflight, sanitized `what-if`, and subscription deployment. PowerShell owns procedural behavior that needs local identity resolution, bounded RBAC propagation retries, value comparison, failure sanitization, cleanup attempts, and cleanup-state validation.
 
-The owner-run sequence is intentionally two phase. The first deployment disables the final reader assignment, allowing the denial script to prove that control-plane creation does not imply Key Vault data-plane access. Bootstrap then grants the signed-in user `Key Vault Secrets Officer` temporarily at the individual vault, creates and validates exactly three synthetic secrets, and removes that role in `finally`. The second deployment enables the deterministic, persistent `Key Vault Secrets User` assignment for that user at the same vault scope.
+Every workflow requires `AZURE_SUBSCRIPTION_ID`, verifies that subscription without printing account data, and passes it explicitly to every Azure-connected CLI command. The `what-if` and deployment workflows resolve the current signed-in user under that subscription and inject the object ID into the existing Bicep parameter locally. Bootstrap and validation resolve the same current user under the same explicit subscription context, preventing a separately configured reader principal from drifting away from the operator identity.
+
+The owner-run sequence is intentionally two phase. The first deployment disables the final reader assignment, allowing the denial script to prove that control-plane creation does not imply Key Vault data-plane access. Bootstrap then grants the signed-in user `Key Vault Secrets Officer` temporarily at the individual vault, creates and validates exactly three synthetic secrets, and attempts to remove that role in `finally`. The script succeeds only when a complete direct vault-scope query validates that the temporary assignment is absent. The second deployment enables the deterministic, persistent `Key Vault Secrets User` assignment for that user at the same vault scope.
+
+Direct vault-scoped assignments and inherited effective permissions are separate security facts. Direct-state checks enumerate all assignments at the vault and filter the exact scope locally. Final validation separately includes inherited assignments and rejects inherited Key Vault data-plane actions as an unsupported least-privilege precondition.
 
 The vault definition enables Azure RBAC, purge protection, seven-day soft-delete retention, and public network access. Public access is a documented development exception for local validation, not a production network design.
 

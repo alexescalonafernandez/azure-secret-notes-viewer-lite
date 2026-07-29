@@ -15,16 +15,20 @@ Use a subscription-scope Bicep entry point with focused modules:
 - a Resource Group-scoped module creates a Standard Key Vault with Azure RBAC, purge protection, seven-day soft-delete retention, and public network access enabled as a development exception;
 - a Resource Group-scoped role module conditionally assigns the built-in `Key Vault Secrets User` role to one individual user at the vault itself, using its stable role definition ID and deterministic assignment naming.
 
-Persistent state belongs to Bicep. Simple preflight, sanitized `what-if`, and deployment commands belong in `.azcli`. Procedural denial validation, temporary RBAC, bounded propagation retries, secret creation, local comparison, cleanup, and final validation belong in strict PowerShell.
+Persistent state belongs to Bicep. Simple preflight, sanitized `what-if`, and deployment commands belong in `.azcli`. Procedural denial validation, temporary RBAC, bounded propagation retries, secret creation, local comparison, cleanup attempts, and final validation belong in strict PowerShell.
 
-Use two declarative deployments. The first disables the final reader assignment. After the owner proves data-plane denial, bootstrap temporarily assigns vault-scoped `Key Vault Secrets Officer`, creates exactly three synthetic secrets with 90-day UTC expiration, validates them locally, and removes Officer access. The second deployment enables the persistent vault-scoped `Key Vault Secrets User` assignment.
+Require `AZURE_SUBSCRIPTION_ID` for every owner-run workflow. Verify and pass that subscription explicitly without printing it. Resolve the current signed-in user under that subscription in both declarative workflows and procedural scripts. Supply that user's object ID as an in-memory Bicep override rather than storing a separate principal in the local parameter file.
+
+Use two declarative deployments. The first disables the final reader assignment. After the owner proves data-plane denial, bootstrap temporarily assigns vault-scoped `Key Vault Secrets Officer`, creates exactly three synthetic secrets with 90-day UTC expiration, validates them locally, and attempts to remove Officer access through `finally`. A locally generated assignment name makes the exact assignment resource ID known before creation; success still requires a complete direct-scope query to prove absence. The second deployment enables the persistent vault-scoped `Key Vault Secrets User` assignment.
+
+Enumerate direct vault assignments with complete resource-scope semantics and no principal-name resolution, then filter exact scope locally. Inspect inherited effective assignments separately and reject inherited Key Vault data actions as an unsupported least-privilege precondition. Physical secret names must not reuse any public logical `NoteId`, case-insensitively.
 
 Do not create secrets in Bicep. Do not create persistent Officer, Administrator, Owner, or Contributor assignments. Do not create an application or Managed Identity assignment in this milestone.
 
 ## Consequences
 
 - Control-plane and data-plane separation becomes an explicit, owner-validated property.
-- Persistent Azure state remains reviewable and idempotent; temporary privilege is procedural and cleaned up.
+- Persistent Azure state remains reviewable and idempotent; temporary privilege is procedural, cleanup is attempted, and absence is validated before success.
 - The local developer receives final read access only to one development vault.
 - Public network access permits local validation but increases exposure relative to a private endpoint; this exception must not be copied into production without review.
 - Purge protection and seven-day retention improve recovery safety but prevent immediate purge and immediate vault-name reuse during teardown.

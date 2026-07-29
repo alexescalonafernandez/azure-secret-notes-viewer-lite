@@ -72,6 +72,7 @@ The role allows access only to the application's fixed synthetic `/Notes` catalo
 - Authorization succeeds before the PageModel executes the notes service.
 - `ClosedNoteCatalog` owns membership, order, and display names.
 - Only the three known `NoteId` values are valid; logical IDs are not physical Key Vault names.
+- Physical Key Vault names must differ case-insensitively from all three public logical `NoteId` values.
 - Razor accepts no route, query, form, or handler identifier input.
 - Query strings cannot alter or expand the catalog.
 - Raw identifier strings never reach `INoteContentProvider`, and the provider cannot enumerate notes.
@@ -92,7 +93,11 @@ A future deployed App Service will use a system-assigned Managed Identity as its
 
 The B4-D7 repository definition explicitly enables Azure RBAC on the development vault. Control-plane permission to deploy the vault does not grant secret data-plane access; the owner-run denial check must prove that separation after the first deployment.
 
-Bootstrap grants the signed-in development user `Key Vault Secrets Officer` only at the individual vault and only for the bounded secret-creation procedure. Cleanup runs through `finally`, and validation must confirm that Officer access is absent. The final Bicep deployment assigns that same individual user `Key Vault Secrets User` at vault scope through a deterministic role assignment. The built-in role definition ID, not its display name, is the declarative identity of the role.
+Bootstrap grants the signed-in development user `Key Vault Secrets Officer` only at the individual vault and only for the bounded secret-creation procedure. Cleanup is attempted through `finally`; it is not guaranteed when Azure is unavailable. The script exits successfully only after a complete direct vault-scope query confirms Officer access is absent. The final Bicep deployment assigns that same individual user `Key Vault Secrets User` at vault scope through a deterministic role assignment. The built-in role definition ID, not its display name, is the declarative identity of the role.
+
+All owner-run workflows require the local `AZURE_SUBSCRIPTION_ID`, verify it without displaying account metadata, and pass it to every relevant Azure CLI command. The Bicep reader object ID is not stored in the parameter file: `what-if` and deployment resolve the current signed-in user under the pinned subscription and supply it as an in-memory override. Bootstrap and final validation resolve the same current user under that subscription context.
+
+Direct role assignments are not interchangeable with inherited effective permissions. Direct validation enumerates all assignments for the vault scope with principal-name filling disabled, then filters exact scope locally. Effective validation includes inherited assignments separately. An inherited role with Key Vault data actions invalidates the development least-privilege assumptions and causes sanitized failure as an unsupported precondition.
 
 This human reader assignment is a local-development exception and is unrelated to `SecretNotes.Reader`. B4-D7 creates no application or Managed Identity assignment. The future App Service Managed Identity remains the expected application caller and will require a separate least-privilege decision in B4-D8 or a later milestone.
 
@@ -183,9 +188,10 @@ Planned owner-run validation for B4-D7:
 - Control-plane deployment does not grant the local user secret data-plane access.
 - Exactly three enabled synthetic secrets exist, each with one initial version and a 90-day UTC expiration.
 - Secret metadata and values are compared locally without printing values or physical names.
-- Temporary `Key Vault Secrets Officer` is absent after bootstrap, including failure paths where cleanup is safely possible.
+- Temporary `Key Vault Secrets Officer` is absent after bootstrap; cleanup is attempted through `finally` and absence is queried, not assumed.
 - Final `Key Vault Secrets User` exists for the local user at the individual vault.
 - No application identity or Managed Identity assignment exists at the vault.
+- Inherited Key Vault data-plane permission causes sanitized failure as an unsupported precondition.
 - Evidence contains only coarse markers, with no raw Azure errors, identifiers, URLs, principal data, or role objects.
 
 Still deferred to B4-D8 or later:

@@ -14,14 +14,43 @@ No Azure or Microsoft Entra mutation was executed while preparing the repository
 - `.azcli` files are simple, selectively executable workflows for local preflight, sanitized subscription-scope `what-if`, and subscription-scope deployment.
 - PowerShell owns procedural checks, bounded RBAC propagation, temporary access, local comparisons, cleanup, and sanitized evidence.
 
-The committed parameter example contains unmistakable placeholders only. Copy it to `infra/environments/development.bicepparam`, which is ignored by Git, and replace the placeholders locally. Never publish the local file or its values.
+## Prerequisites
+
+The locally validated baseline is Azure CLI 2.85.0, Bicep CLI 0.45.15, and PowerShell 7.6.4. Use those versions or compatible later versions that provide `az bicep build`, `az bicep lint`, subscription deployments, `az ad signed-in-user show`, and role-assignment listing with `--all`, `--include-inherited`, and `--fill-principal-name false`.
+
+The signed-in operator needs:
+
+- subscription-scope deployment permission, including `Microsoft.Resources/deployments/*`;
+- `Microsoft.Resources/subscriptions/resourceGroups/write` for the dedicated Resource Group;
+- `Microsoft.KeyVault/vaults/write` at the target Resource Group for the vault deployment;
+- permission to read role assignments at subscription, Resource Group, and vault scope;
+- permission to read the role definitions referenced by inherited assignments;
+- `Microsoft.Authorization/roleAssignments/write` and `Microsoft.Authorization/roleAssignments/delete` at the individual vault, or an appropriate least-privilege role containing them;
+- access to resolve the signed-in user's own object ID; and
+- the temporary data-plane access granted by the bootstrap workflow after role propagation.
+
+Control-plane deployment permission does not imply Key Vault secret access. Do not broaden permissions to Owner, Contributor, Key Vault Administrator, or persistent Secrets Officer merely to make the workflow pass.
+
+## Local setup
+
+Set the target subscription only in the current local shell:
+
+```powershell
+$env:AZURE_SUBSCRIPTION_ID = '<set-local-subscription-id>'
+```
+
+Every workflow rejects a missing or whitespace value, verifies the target subscription without printing account details, and passes `--subscription` explicitly. Do not echo, log, screenshot, or commit the environment variable.
+
+Copy the committed example to `infra/environments/development.bicepparam`, which is ignored by Git, and replace only the Resource Group name, vault name, and deployment-phase boolean. The development reader object ID is deliberately absent: `what-if` and deployment resolve the current signed-in user under the pinned subscription and pass that value to Bicep in memory. Bootstrap and final validation resolve the same current user under the same subscription context.
+
+Never publish the local parameter file or its values. Do not change the signed-in Azure CLI identity between the initial deployment, bootstrap, final deployment, and validation.
 
 ## Owner-run sequence
 
 Run each step selectively from the repository root in a PowerShell terminal. Stop on any failure.
 
-1. Copy the example parameter file to the ignored local filename.
-2. Set local Resource Group name, vault name, and current user object ID. Keep `assignDevelopmentReaderRole = false`.
+1. Set `AZURE_SUBSCRIPTION_ID` in the current shell and copy the example parameter file to the ignored local filename.
+2. Set the local Resource Group name and vault name. Keep `assignDevelopmentReaderRole = false`.
 3. Run `infra/scripts/00-preflight.azcli`.
 4. Run `infra/scripts/01-what-if-development-key-vault.azcli` and review the sanitized change and resource types.
 5. Run `infra/scripts/02-deploy-development-key-vault.azcli`.
@@ -32,6 +61,41 @@ Run each step selectively from the repository root in a PowerShell terminal. Sto
 10. Run `infra/scripts/05-validate-development-key-vault.ps1` with the same local resource and physical secret names.
 
 The deployment workflow supports both phases through the local Bicep boolean; it does not hardcode either phase.
+
+## Sanitized PowerShell invocations
+
+Keep all resource values and physical names in local variables. The placeholders below are intentionally non-real:
+
+```powershell
+$resourceGroupName = '<set-local-resource-group-name>'
+$vaultName = '<set-local-vault-name>'
+$operationsSecretName = '<set-private-operations-secret-name>'
+$integrationSecretName = '<set-private-integration-secret-name>'
+$recoverySecretName = '<set-private-recovery-secret-name>'
+
+& ./infra/scripts/03-validate-control-data-plane-separation.ps1 `
+    -VaultName $vaultName
+
+& ./infra/scripts/04-bootstrap-synthetic-secrets.ps1 `
+    -ResourceGroupName $resourceGroupName `
+    -VaultName $vaultName `
+    -OperationsSecretName $operationsSecretName `
+    -IntegrationSecretName $integrationSecretName `
+    -RecoverySecretName $recoverySecretName `
+    -PropagationMaxAttempts 12 `
+    -PropagationDelaySeconds 10
+
+& ./infra/scripts/05-validate-development-key-vault.ps1 `
+    -ResourceGroupName $resourceGroupName `
+    -VaultName $vaultName `
+    -OperationsSecretName $operationsSecretName `
+    -IntegrationSecretName $integrationSecretName `
+    -RecoverySecretName $recoverySecretName `
+    -PropagationMaxAttempts 12 `
+    -PropagationDelaySeconds 10
+```
+
+Do not enable transcript, verbose, or debug output. The physical names must be unique and must differ case-insensitively from all public logical IDs: `demo-operations-note`, `demo-integration-note`, and `demo-recovery-note`.
 
 ## Expected state transitions
 
@@ -56,15 +120,32 @@ Final validation
 → vault configuration, secret state, read access, and RBAC separation verified
 ```
 
-Each secret is enabled, has one initial version, uses `text/plain; purpose=synthetic-demo`, and expires 90 days after creation in UTC. Physical secret names remain local. The scripts never create a fourth probe secret.
+Each secret is enabled, has one initial version, uses `text/plain; purpose=synthetic-demo`, and expires 90 days after creation in UTC. Physical secret names remain local and separate from every public logical `NoteId`. The scripts never create a fourth probe secret.
+
+## Direct and inherited RBAC
+
+A direct assignment has a scope exactly equal to the individual vault. An inherited effective assignment originates at the Resource Group, subscription, or another parent scope. The workflows do not treat these as interchangeable:
+
+- bootstrap and cleanup enumerate all direct vault assignments, disable principal-name filling, and filter the exact vault scope locally;
+- final validation requires exactly one direct `Key Vault Secrets User` assignment for the current development user;
+- final validation requires no direct `Key Vault Secrets Officer` and no direct application or Managed Identity assignment at the vault; and
+- final validation separately includes inherited assignments and rejects any inherited role containing Key Vault data actions.
+
+An inherited Key Vault data-plane role is an unsupported precondition because a successful read would no longer prove the intended vault-scoped reader assignment. Remove or narrow that inherited access through an independently reviewed administrative change before rerunning validation.
 
 ## Security and failure behavior
 
 The Key Vault uses Azure RBAC, purge protection, seven-day soft-delete retention, and Standard SKU in West Europe. Public network access is enabled only as a local-development exception; it is not the production network posture.
 
-Bootstrap refuses a non-empty vault so reruns cannot silently create extra versions. RBAC propagation and cleanup checks use bounded retries. The temporary Officer assignment is removed in `finally` where safely possible, and final validation requires Officer absence, User presence, read success, and no application or Managed Identity assignment at the vault.
+Bootstrap refuses a non-empty vault so reruns cannot silently create extra versions. If a partial bootstrap creates one or more secrets and then fails, the next run stops at the non-empty-vault guard. Do not delete, overwrite, or rerun blindly. Privately inspect the vault, confirm which intended names and versions exist, and decide on a separately authorized recovery or teardown action without publishing the findings.
+
+Temporary Officer propagation, final reader propagation, and cleanup validation use bounded retries. A retry waits only after a failed attempt and stops immediately on success. If propagation times out, confirm the pinned subscription, signed-in user, direct role scope, and absence of inherited data-plane access privately, then wait for Azure RBAC convergence before rerunning the relevant validation step.
+
+The temporary Officer cleanup is attempted in `finally` using an assignment resource ID known before creation. Cleanup is best effort because Azure can be unavailable; it is not guaranteed. The bootstrap script still exits non-zero unless a complete direct vault-scope query proves the Officer assignment is absent.
 
 The scripts capture Azure responses locally and emit only coarse markers. Do not enable debug or verbose CLI output, copy raw terminal failures, or publish identifiers, vault URLs, physical names, role objects, secret values, or personal information as evidence.
+
+For safe manual investigation, use the Azure portal or Azure CLI only in a private local session. Keep `--subscription` explicit, disable principal-name filling, use narrow sanitized queries, and redirect raw errors away from shared output. Record only a coarse conclusion such as subscription mismatch, permission missing, propagation pending, vault non-empty, direct role invalid, or inherited data-plane permission present. Never paste raw errors, command arguments containing local values, IDs, URLs, principal data, physical names, or role-assignment objects into Issues, pull requests, chat, screenshots, or documentation.
 
 ## Teardown constraint
 

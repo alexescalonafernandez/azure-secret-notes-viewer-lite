@@ -2,16 +2,49 @@
 # Review the sanitized change types and resource types before deploying.
 $parameterFile = 'infra/environments/development.bicepparam'
 $deploymentName = 'development-key-vault-review'
+$subscriptionId = $env:AZURE_SUBSCRIPTION_ID
 
 if (-not (Test-Path -LiteralPath $parameterFile)) { throw 'local-parameter-file-missing' }
+if ([string]::IsNullOrWhiteSpace($subscriptionId)) { throw 'subscription-context-invalid' }
+if ($null -eq (Get-Command az -ErrorAction SilentlyContinue)) { throw 'azure-cli-unavailable' }
 
-az deployment sub what-if `
+$verifiedSubscriptionId = (
+  & az account show `
+    --subscription $subscriptionId `
+    --query id `
+    --output tsv `
+    --only-show-errors 2>$null
+)
+if (
+  $LASTEXITCODE -ne 0 -or
+  [string]::IsNullOrWhiteSpace($verifiedSubscriptionId) -or
+  -not [string]::Equals(
+    $verifiedSubscriptionId.Trim(),
+    $subscriptionId.Trim(),
+    [StringComparison]::OrdinalIgnoreCase
+  )
+) { throw 'subscription-context-invalid' }
+
+$developmentReaderPrincipalId = (
+  & az ad signed-in-user show `
+    --subscription $subscriptionId `
+    --query id `
+    --output tsv `
+    --only-show-errors 2>$null
+)
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($developmentReaderPrincipalId)) {
+  throw 'development-user-unavailable'
+}
+$developmentReaderPrincipalId = $developmentReaderPrincipalId.Trim()
+
+& az deployment sub what-if `
   --name $deploymentName `
   --location westeurope `
+  --subscription $subscriptionId `
   --template-file infra/main.bicep `
-  --parameters $parameterFile `
+  --parameters $parameterFile "developmentReaderPrincipalId=$developmentReaderPrincipalId" `
   --only-show-errors `
   --query "changes[].{changeType:changeType, resourceType:after.type}" `
-  --output table
+  --output table 2>$null
 
 if ($LASTEXITCODE -ne 0) { throw 'development-key-vault-what-if-failed' }

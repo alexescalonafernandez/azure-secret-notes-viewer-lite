@@ -2,5 +2,5 @@ using '../main.bicep'
 
 param resourceGroupName = '<set-local-development-resource-group-name>'
 param keyVaultName = '<set-local-globally-unique-vault-name>'
-param developmentReaderPrincipalId = '<set-local-current-user-object-id>'
+// The workflows inject developmentReaderPrincipalId from the current signed-in user.
 param assignDevelopmentReaderRole = false

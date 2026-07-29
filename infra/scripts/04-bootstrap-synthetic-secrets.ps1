@@ -26,10 +26,17 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
+$subscriptionId = $env:AZURE_SUBSCRIPTION_ID
 $secretsOfficerRoleDefinitionId = 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7'
 $syntheticContentType = 'text/plain; purpose=synthetic-demo'
+$publicLogicalNoteIds = @(
+    'demo-operations-note'
+    'demo-integration-note'
+    'demo-recovery-note'
+)
+$temporaryRoleAssignmentName = [Guid]::NewGuid().ToString()
 $temporaryRoleAssignmentId = $null
-$temporaryRoleCreated = $false
+$temporaryRoleCreationAttempted = $false
 $bootstrapSucceeded = $false
 $cleanupSucceeded = $true
 
@@ -39,7 +46,8 @@ function Invoke-AzCli {
         [string[]] $Arguments
     )
 
-    $captured = @(& az @Arguments 2>&1)
+    $effectiveArguments = @($Arguments) + @('--subscription', $script:subscriptionId)
+    $captured = @(& az @effectiveArguments 2>&1)
     $exitCode = $LASTEXITCODE
     $capturedText = ($captured | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
 
@@ -77,24 +85,18 @@ function ConvertFrom-SanitizedJson {
     }
 }
 
-function Get-ExactVaultRoleAssignments {
+function Get-DirectVaultRoleAssignments {
     param(
         [Parameter(Mandatory)]
-        [string] $PrincipalId,
-
-        [Parameter(Mandatory)]
-        [string] $VaultScope,
-
-        [Parameter(Mandatory)]
-        [string] $RoleDefinitionId
+        [string] $VaultScope
     )
 
     $json = Invoke-AzCliRequired -Arguments @(
         'role', 'assignment', 'list',
-        '--assignee-object-id', $PrincipalId,
+        '--all',
         '--scope', $VaultScope,
-        '--role', $RoleDefinitionId,
-        '--query', '[].{roleDefinitionId:roleDefinitionId,scope:scope}',
+        '--fill-principal-name', 'false',
+        '--query', '[].{roleDefinitionId:roleDefinitionId,principalId:principalId,principalType:principalType,scope:scope}',
         '--output', 'json',
         '--only-show-errors'
     )
@@ -102,8 +104,11 @@ function Get-ExactVaultRoleAssignments {
 
     return @(
         $assignments | Where-Object {
-            $_.scope -eq $VaultScope -and
-            $_.roleDefinitionId.EndsWith($RoleDefinitionId, [StringComparison]::OrdinalIgnoreCase)
+            [string]::Equals(
+                $_.scope,
+                $VaultScope,
+                [StringComparison]::OrdinalIgnoreCase
+            )
         }
     )
 }
@@ -114,14 +119,40 @@ function Assert-PrivateInput {
         [string] $Value
     )
 
-    if ([string]::IsNullOrWhiteSpace($Value) -or $Value -notmatch '^[A-Za-z0-9-]{1,127}$') {
+    if (
+        [string]::IsNullOrWhiteSpace($Value) -or
+        $Value -notmatch '^[A-Za-z0-9-]{1,127}$' -or
+        $script:publicLogicalNoteIds -icontains $Value
+    ) {
         throw 'private-input-invalid'
     }
 }
 
 try {
-    if ([string]::IsNullOrWhiteSpace($ResourceGroupName) -or [string]::IsNullOrWhiteSpace($VaultName)) {
+    if (
+        [string]::IsNullOrWhiteSpace($subscriptionId) -or
+        [string]::IsNullOrWhiteSpace($ResourceGroupName) -or
+        [string]::IsNullOrWhiteSpace($VaultName)
+    ) {
         throw 'resource-input-invalid'
+    }
+
+    $verifiedSubscriptionId = (
+        Invoke-AzCliRequired -Arguments @(
+            'account', 'show',
+            '--query', 'id',
+            '--output', 'tsv',
+            '--only-show-errors'
+        )
+    ).Trim()
+    if (
+        -not [string]::Equals(
+            $verifiedSubscriptionId,
+            $subscriptionId.Trim(),
+            [StringComparison]::OrdinalIgnoreCase
+        )
+    ) {
+        throw 'subscription-context-invalid'
     }
 
     $fixtures = @(
@@ -176,32 +207,38 @@ try {
     }
 
     $existingOfficerAssignments = @(
-        Get-ExactVaultRoleAssignments `
-            -PrincipalId $principalId `
-            -VaultScope $vaultScope `
-            -RoleDefinitionId $secretsOfficerRoleDefinitionId
+        Get-DirectVaultRoleAssignments -VaultScope $vaultScope |
+            Where-Object {
+                $_.principalId -eq $principalId -and
+                $_.roleDefinitionId.EndsWith(
+                    $secretsOfficerRoleDefinitionId,
+                    [StringComparison]::OrdinalIgnoreCase
+                )
+            }
     )
     if ($existingOfficerAssignments.Count -ne 0) {
         throw 'preexisting-officer-assignment'
     }
 
-    $temporaryRoleAssignmentId = (
-        Invoke-AzCliRequired -Arguments @(
+    $temporaryRoleAssignmentId = '{0}/providers/Microsoft.Authorization/roleAssignments/{1}' -f (
+        $vaultScope.TrimEnd('/'),
+        $temporaryRoleAssignmentName
+    )
+    $temporaryRoleCreationAttempted = $true
+    $createRoleResult = Invoke-AzCli -Arguments @(
             'role', 'assignment', 'create',
+            '--name', $temporaryRoleAssignmentName,
             '--assignee-object-id', $principalId,
             '--assignee-principal-type', 'User',
             '--role', $secretsOfficerRoleDefinitionId,
             '--scope', $vaultScope,
-            '--query', 'id',
-            '--output', 'tsv',
+            '--output', 'none',
             '--only-show-errors'
         )
-    ).Trim()
-    if ([string]::IsNullOrWhiteSpace($temporaryRoleAssignmentId)) {
+    if ($createRoleResult.ExitCode -ne 0) {
         throw 'temporary-officer-assignment-failed'
     }
 
-    $temporaryRoleCreated = $true
     Write-Output 'temporary-officer-assigned'
 
     $rbacReady = $false
@@ -307,7 +344,7 @@ catch {
     $bootstrapSucceeded = $false
 }
 finally {
-    if ($temporaryRoleCreated) {
+    if ($temporaryRoleCreationAttempted) {
         $cleanupSucceeded = $false
         for ($attempt = 1; $attempt -le $PropagationMaxAttempts; $attempt++) {
             $null = Invoke-AzCli -Arguments @(
@@ -319,10 +356,14 @@ finally {
 
             try {
                 $remainingAssignments = @(
-                    Get-ExactVaultRoleAssignments `
-                        -PrincipalId $principalId `
-                        -VaultScope $vaultScope `
-                        -RoleDefinitionId $secretsOfficerRoleDefinitionId
+                    Get-DirectVaultRoleAssignments -VaultScope $vaultScope |
+                        Where-Object {
+                            $_.principalId -eq $principalId -and
+                            $_.roleDefinitionId.EndsWith(
+                                $secretsOfficerRoleDefinitionId,
+                                [StringComparison]::OrdinalIgnoreCase
+                            )
+                        }
                 )
                 if ($remainingAssignments.Count -eq 0) {
                     $cleanupSucceeded = $true
