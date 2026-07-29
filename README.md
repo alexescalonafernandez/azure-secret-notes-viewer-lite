@@ -30,9 +30,9 @@ The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages w
 
 `B4-D7 — Development Key Vault Infrastructure and RBAC Bootstrap`
 
-The repository now implements subscription-scope Bicep for a dedicated development Resource Group, a Standard Key Vault in West Europe, and an optional vault-scoped `Key Vault Secrets User` assignment. Six focused PowerShell workflows cover local preflight, sanitized `what-if`, deployment, negative data-plane validation, temporary bootstrap access, synthetic-secret creation, cleanup, and final validation. They use PowerShell because the workflows contain validation and control flow; `.azcli` remains reserved for genuinely linear Azure CLI scrapbooks.
+The repository now implements subscription-scope Bicep for a dedicated development Resource Group, a Standard Key Vault in West Europe, and an optional vault-scoped `Key Vault Secrets User` assignment. The linked `.bicepparam` is the complete deployment parameter source, while Bicep resolves the final deployment identity with `deployer().objectId`. Six focused PowerShell workflows cover local preflight, sanitized `what-if`, deployment, negative data-plane validation, temporary bootstrap access, synthetic-secret creation, cleanup, and final validation. They use PowerShell because the workflows contain validation and control flow; `.azcli` remains reserved for genuinely linear Azure CLI scrapbooks.
 
-This branch contains implementation only. Azure deployment and validation are planned manual owner actions after review. Application behavior is unchanged: `INoteContentProvider` still resolves to `InMemoryNoteContentProvider`; Key Vault application integration, App Service, Managed Identity, telemetry, and CI/CD remain deferred.
+This branch contains implementation only. The owner-run preflight succeeded, but the first attempted `what-if` exposed the linked-parameter incompatibility before any Azure resource deployment occurred. The corrected `what-if`, deployment, bootstrap, and validation remain planned owner actions. Application behavior is unchanged: `INoteContentProvider` still resolves to `InMemoryNoteContentProvider`; Key Vault application integration, App Service, Managed Identity, telemetry, and CI/CD remain deferred.
 
 ## Application structure
 

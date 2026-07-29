@@ -3,10 +3,11 @@
 ## Status boundary
 
 - **Implemented in repository:** subscription-scope Bicep and six focused PowerShell workflow scripts.
-- **Planned manual execution:** the repository owner reviews `what-if`, performs both deployments, runs bootstrap, and retains only sanitized markers.
+- **Owner-run result so far:** preflight succeeded; the first attempted `what-if` exposed an incompatible linked-parameter and inline-override design before any Azure resource deployment occurred.
+- **Planned manual execution:** the repository owner reruns preflight, reviews the corrected `what-if`, performs both deployments, runs bootstrap, and retains only sanitized shared evidence.
 - **Validated only after owner-run deployment:** actual Resource Group, vault, secret metadata, secret values, and Azure RBAC state.
 
-No Azure or Microsoft Entra mutation was executed while preparing the repository. The application remains on `InMemoryNoteContentProvider`; Key Vault application integration is deferred to B4-D8.
+No Azure or Microsoft Entra mutation was executed while preparing this correction. The failed owner-run `what-if` did not deploy resources. The application remains on `InMemoryNoteContentProvider`; Key Vault application integration is deferred to B4-D8.
 
 ## Tool responsibilities
 
@@ -17,7 +18,7 @@ No Azure or Microsoft Entra mutation was executed while preparing the repository
 
 ## Prerequisites
 
-The locally validated baseline is Azure CLI 2.85.0, Bicep CLI 0.45.15, and PowerShell 7.6.4. Use those versions or compatible later versions that provide `az bicep build`, `az bicep lint`, subscription deployments, `az ad signed-in-user show`, and role-assignment listing with `--all`, `--include-inherited`, and `--fill-principal-name false`.
+The locally validated baseline is Azure CLI 2.85.0, Bicep CLI 0.45.15, and PowerShell 7.6.4. Use those versions or compatible later versions that provide `az bicep build`, `az bicep build-params`, subscription deployments, `az ad signed-in-user show`, and role-assignment listing with `--all`, `--include-inherited`, and `--fill-principal-name false`.
 
 The signed-in operator needs:
 
@@ -38,9 +39,9 @@ Before running a workflow, privately select and verify the intended Azure CLI ac
 
 Each script captures the active subscription once with a sanitized `az account show`, rejects a missing or unauthenticated context, and does not print the captured value. Subscription- and resource-bound commands continue to pass the captured value through `--subscription`. The tenant-bound `az ad signed-in-user show` command does not accept that option and runs only after the active context has been captured.
 
-Copy the committed example to `infra/environments/development.bicepparam`, which is ignored by Git, and replace only the Resource Group name, vault name, and deployment-phase boolean. The development reader object ID is deliberately absent: `what-if` and deployment resolve the current signed-in user under the pinned subscription and pass that value to Bicep in memory. Bootstrap and final validation resolve the same current user under the same subscription context.
+Copy the committed example to `infra/environments/development.bicepparam`, which is ignored by Git, and replace only the Resource Group name, vault name, and deployment-phase boolean. The file links to `main.bicep` with `using '../main.bicep'` and is the complete deployment parameter source. It contains no principal value. Scripts 01 and 02 pass only `--parameters $parameterFile`; `--template-file`, a second parameter source, and inline principal overrides must not accompany this linked-file workflow.
 
-Never publish the local parameter file or its values. Do not change the signed-in Azure CLI identity between the initial deployment, bootstrap, final deployment, and validation.
+Bicep obtains the deployment identity through `deployer().objectId`. The final human reader role therefore targets the identity executing the final deployment. Never publish the local parameter file or its values, and do not change the signed-in Azure CLI identity between the initial deployment, bootstrap, final deployment, and validation.
 
 ## Owner-run sequence
 
@@ -48,8 +49,8 @@ Run each step selectively from the repository root in a PowerShell terminal. Sto
 
 1. Privately select and verify the intended Azure CLI active subscription, then copy the example parameter file to the ignored local filename.
 2. Set the local Resource Group name and vault name. Keep `assignDevelopmentReaderRole = false`.
-3. Run `infra/scripts/00-preflight.ps1`.
-4. Run `infra/scripts/01-what-if-development-key-vault.ps1` and review the sanitized change and resource types.
+3. Run `infra/scripts/00-preflight.ps1`; it validates both `infra/main.bicep` and the ignored local `.bicepparam`.
+4. Run `infra/scripts/01-what-if-development-key-vault.ps1` and review the sanitized change and resource types. Investigate any Azure CLI diagnostics only in the private terminal.
 5. Run `infra/scripts/02-deploy-development-key-vault.ps1`.
 6. Run `infra/scripts/03-validate-control-data-plane-separation.ps1` with the local vault name. Its only successful output is `data-plane-denied-before-assignment`.
 7. Run `infra/scripts/04-bootstrap-synthetic-secrets.ps1` with the local Resource Group name, vault name, and three private physical secret names.
@@ -140,9 +141,9 @@ Temporary Officer propagation, final reader propagation, and cleanup validation 
 
 The temporary Officer cleanup is attempted in `finally` using an assignment resource ID known before creation. Cleanup is best effort because Azure can be unavailable; it is not guaranteed. The bootstrap script still exits non-zero unless a complete direct vault-scope query proves the Officer assignment is absent.
 
-The scripts capture Azure responses locally and emit only coarse markers. Do not enable debug or verbose CLI output, copy raw terminal failures, or publish identifiers, vault URLs, physical names, role objects, secret values, or personal information as evidence.
+Scripts 01 and 02 intentionally leave Azure CLI errors visible in the owner's private local terminal so deployment diagnostics remain actionable. The other validation and bootstrap scripts continue suppressing raw Azure errors and emit only coarse markers. Shared evidence for every workflow must contain only sanitized conclusions, change/resource types where already designed, and coarse markers.
 
-For safe manual investigation, use the Azure portal or Azure CLI only in a private local session. Privately verify the active subscription before tenant-bound `az ad` commands; keep the captured subscription explicit on subscription- and resource-bound commands, disable principal-name filling, use narrow sanitized queries, and redirect raw errors away from shared output. Record only a coarse conclusion such as subscription mismatch, permission missing, propagation pending, vault non-empty, direct role invalid, or inherited data-plane permission present. Never paste raw errors, command arguments containing local values, IDs, URLs, principal data, physical names, or role-assignment objects into Issues, pull requests, chat, screenshots, or documentation.
+For safe manual investigation, use the Azure portal or Azure CLI only in a private local session. Privately verify the active subscription before tenant-bound `az ad` commands; keep the captured subscription explicit on subscription- and resource-bound commands, disable principal-name filling, and use narrow queries. Inspect raw `what-if` or deployment errors only in that private terminal. Record only a coarse conclusion such as parameter source invalid, subscription mismatch, permission missing, propagation pending, vault non-empty, direct role invalid, or inherited data-plane permission present. Never paste raw errors, command arguments containing local values, IDs, URLs, principal data, physical names, screenshots, or role-assignment objects into Issues, pull requests, chat, or documentation.
 
 ## Teardown constraint
 

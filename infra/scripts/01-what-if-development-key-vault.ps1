@@ -24,25 +24,13 @@ if (
 ) { throw 'subscription-context-invalid' }
 $subscriptionId = $subscriptionId.Trim()
 
-$developmentReaderPrincipalId = (
-  & az ad signed-in-user show `
-    --query id `
-    --output tsv `
-    --only-show-errors 2>$null
-)
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($developmentReaderPrincipalId)) {
-  throw 'development-user-unavailable'
-}
-$developmentReaderPrincipalId = $developmentReaderPrincipalId.Trim()
-
 & az deployment sub what-if `
   --name $deploymentName `
   --location westeurope `
   --subscription $subscriptionId `
-  --template-file infra/main.bicep `
-  --parameters $parameterFile "developmentReaderPrincipalId=$developmentReaderPrincipalId" `
+  --parameters $parameterFile `
   --only-show-errors `
   --query "changes[].{changeType:changeType, resourceType:after.type}" `
-  --output table 2>$null
+  --output table
 
 if ($LASTEXITCODE -ne 0) { throw 'development-key-vault-what-if-failed' }

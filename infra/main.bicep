@@ -6,9 +6,6 @@ param resourceGroupName string
 @description('Globally unique name of the development Key Vault.')
 param keyVaultName string
 
-@description('Object ID of the individual development user who may receive final read access.')
-param developmentReaderPrincipalId string
-
 @description('Whether to persist the final Key Vault Secrets User assignment for the development user.')
 param assignDevelopmentReaderRole bool = false
 
@@ -51,7 +48,7 @@ module keyVaultReaderRole 'modules/key-vault-reader-role.bicep' = if (assignDeve
   scope: resourceGroup(resourceGroupName)
   params: {
     keyVaultName: keyVaultName
-    principalId: developmentReaderPrincipalId
+    principalId: deployer().objectId
   }
   dependsOn: [
     keyVault

@@ -29,13 +29,13 @@ if (
 $subscriptionId = $subscriptionId.Trim()
 Write-Output 'subscription-context-valid'
 
-$developmentReaderPrincipalId = (
+$signedInUserObjectId = (
   & az ad signed-in-user show `
     --query id `
     --output tsv `
     --only-show-errors 2>$null
 )
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($developmentReaderPrincipalId)) {
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($signedInUserObjectId)) {
   throw 'development-user-unavailable'
 }
 Write-Output 'identity-context-valid'
@@ -43,5 +43,11 @@ Write-Output 'identity-context-valid'
 $null = & az bicep build --file infra/main.bicep --stdout 2>$null
 if ($LASTEXITCODE -ne 0) { throw 'bicep-build-failed' }
 Write-Output 'bicep-build-valid'
+
+$null = & az bicep build-params `
+  --file $parameterFile `
+  --stdout 2>$null
+if ($LASTEXITCODE -ne 0) { throw 'bicepparam-build-failed' }
+Write-Output 'bicepparam-build-valid'
 
 Write-Output 'preflight-valid'
