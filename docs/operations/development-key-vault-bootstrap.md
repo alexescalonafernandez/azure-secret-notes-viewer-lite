@@ -25,11 +25,11 @@ Run each step selectively from the repository root in a PowerShell terminal. Sto
 3. Run `infra/scripts/00-preflight.azcli`.
 4. Run `infra/scripts/01-what-if-development-key-vault.azcli` and review the sanitized change and resource types.
 5. Run `infra/scripts/02-deploy-development-key-vault.azcli`.
-6. Run `03-validate-control-data-plane-separation.ps1` with the local vault name. Its only successful output is `data-plane-denied-before-assignment`.
-7. Run `04-bootstrap-synthetic-secrets.ps1` with the local Resource Group name, vault name, and three private physical secret names.
+6. Run `infra/scripts/03-validate-control-data-plane-separation.ps1` with the local vault name. Its only successful output is `data-plane-denied-before-assignment`.
+7. Run `infra/scripts/04-bootstrap-synthetic-secrets.ps1` with the local Resource Group name, vault name, and three private physical secret names.
 8. Change only `assignDevelopmentReaderRole` to `true` in the ignored parameter file.
 9. Run the `what-if` workflow again, review it, and run the deployment workflow.
-10. Run `05-validate-development-key-vault.ps1` with the same local resource and physical secret names.
+10. Run `infra/scripts/05-validate-development-key-vault.ps1` with the same local resource and physical secret names.
 
 The deployment workflow supports both phases through the local Bicep boolean; it does not hardcode either phase.
 
