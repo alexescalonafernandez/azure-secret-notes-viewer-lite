@@ -1,18 +1,18 @@
 # Secret Notes Viewer Lite
 
-Secret Notes Viewer Lite is a security-focused Azure learning project for a small web application that displays a closed set of synthetic demonstration notes. The repository includes a locally runnable ASP.NET Core Razor Pages application with Microsoft Entra authentication, a server-side authorization boundary for `/Notes`, and an application-owned closed catalog exposed through a minimal service and provider boundary. Azure integration and infrastructure remain deferred.
+Secret Notes Viewer Lite is a security-focused Azure learning project for a small web application that displays a closed set of synthetic demonstration notes. The repository includes a locally runnable ASP.NET Core Razor Pages application with Microsoft Entra authentication, a server-side authorization boundary for `/Notes`, an application-owned closed catalog, and an owner-deployed and validated development Key Vault defined by repository-backed infrastructure.
 
 ## Learning objectives
 
 - Model Microsoft Entra ID authentication separately from application authorization.
 - Use an app role, `SecretNotes.Reader`, to gate access to protected note viewing.
-- Use an App Service system-assigned Managed Identity as the only Key Vault caller.
+- Use an App Service system-assigned Managed Identity as the only application Key Vault caller.
 - Apply Azure Key Vault Azure RBAC with least privilege.
 - Keep real secrets, credentials, identifiers, and personal data out of source control, logs, screenshots, Issues, pull requests, and telemetry.
 
 ## Lite scope
 
-The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages web app, one protected `/Notes` area, an application-owned catalog of known logical note identifiers, and Azure Key Vault as the deferred secret store. Users will never submit arbitrary Key Vault secret names, and users will never access Key Vault directly.
+The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages web app, one protected `/Notes` area, an application-owned catalog of known logical note identifiers, and a repository-defined Azure Key Vault whose application integration is deferred. Users will never submit arbitrary Key Vault secret names, and application users will never access Key Vault directly.
 
 ## Planned technology baseline
 
@@ -23,14 +23,16 @@ The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages w
 - Azure App Service with system-assigned Managed Identity.
 - Azure Key Vault using Azure RBAC, with the Managed Identity expected to receive `Key Vault Secrets User`.
 - Azure SDK `SecretClient` with `DefaultAzureCredential`.
-- Bicep for Azure resources in a later milestone.
+- Bicep as the persistent-state source of truth for the development Resource Group, Key Vault, and final local reader assignment.
 - .NET 10 LTS with target framework `net10.0`, Azure CLI runtime argument `DOTNETCORE:10.0`, and future Bicep/App Service `linuxFxVersion` value `DOTNETCORE|10.0`.
 
 ## Current status
 
-`B4-D6 — Closed Notes Catalog and Application Service Boundary`
+`B4-D7 — Development Key Vault Infrastructure and RBAC Bootstrap`
 
-Microsoft Entra authentication is implemented through Microsoft.Identity.Web. `/Notes` requires `SecretNotes.Reader`, enforced server-side through the named `ReadSecretNotes` policy. After authorization, the PageModel calls `IReadNotesService`, which reads the application-owned `ClosedNoteCatalog` and requests deterministic synthetic content through `INoteContentProvider`. Query strings cannot alter or expand the catalog. Key Vault, Managed Identity, Azure RBAC, deployment, infrastructure, telemetry, and CI/CD remain deferred.
+The repository now implements subscription-scope Bicep for a dedicated development Resource Group, a Standard Key Vault in West Europe, and an optional vault-scoped `Key Vault Secrets User` assignment. The linked `.bicepparam` is the complete deployment parameter source, while Bicep resolves the final deployment identity with `deployer().objectId`. Six focused PowerShell workflows cover local preflight, sanitized `what-if`, deployment, negative data-plane validation, temporary bootstrap access, synthetic-secret creation, cleanup, and final validation. They use PowerShell because the workflows contain validation and control flow; `.azcli` remains reserved for genuinely linear Azure CLI scrapbooks.
+
+B4-D7 is complete. The owner successfully deployed the initial vault, proved that control-plane deployment did not grant secret data-plane access, created the exact three synthetic secrets and completed write-free partial-bootstrap recovery without adding versions, verified temporary Officer cleanup, deployed the final vault-scoped `Key Vault Secrets User` assignment, and completed sanitized vault, secret, and RBAC validation. Application behavior is unchanged: `INoteContentProvider` still resolves to `InMemoryNoteContentProvider`; B4-D8 owns the Key Vault adapter and Azure SDK integration, while App Service, Managed Identity, telemetry, and CI/CD remain deferred.
 
 ## Application structure
 
@@ -65,17 +67,17 @@ After the application starts, open `https://localhost:7164`. `GET /` displays th
 - [Local Microsoft Entra authentication](docs/operations/local-authentication.md)
 - [SecretNotes.Reader authorization](docs/operations/role-authorization.md)
 - [Closed notes catalog and service boundary](docs/operations/closed-notes-catalog.md)
+- [Development Key Vault bootstrap](docs/operations/development-key-vault-bootstrap.md)
 - [ADR 0001: Security architecture baseline](docs/adr/0001-security-architecture-baseline.md)
 - [ADR 0002: Microsoft Entra ID development identity](docs/adr/0002-entra-development-identity.md)
+- [ADR 0003: Development Key Vault RBAC](docs/adr/0003-development-key-vault-rbac.md)
 
 ## Deferred capabilities
 
 - Azure Key Vault retrieval
 - Managed Identity
-- Azure RBAC
-- Bicep and Azure resources
-- Deployment
+- Application identity Azure RBAC
 - Application Insights
 - CI/CD
 
-> **Security warning:** Never commit real secrets, credentials, tokens, tenant IDs, subscription IDs, client IDs, personal data, connection strings, or realistic secret values. Only synthetic demonstration secrets may be used in later milestones.
+> **Security warning:** Never commit real secrets, credentials, tokens, tenant IDs, subscription IDs, client IDs, object IDs, physical secret names, resource identifiers, personal data, connection strings, or realistic secret values. Keep the real development parameter file local and ignored.

@@ -3,7 +3,7 @@
 ## Protected assets
 
 - The implemented `/Notes` application authorization boundary and fixed synthetic catalog.
-- Synthetic demonstration secret values stored in Azure Key Vault in later milestones.
+- Synthetic demonstration secret values stored in the B4-D7 development Key Vault; application retrieval remains deferred to B4-D8.
 - The closed catalog of approved logical note identifiers used by the application.
 - Microsoft Entra ID application registration and app-role assignments.
 - App Service system-assigned Managed Identity.
@@ -72,6 +72,7 @@ The role allows access only to the application's fixed synthetic `/Notes` catalo
 - Authorization succeeds before the PageModel executes the notes service.
 - `ClosedNoteCatalog` owns membership, order, and display names.
 - Only the three known `NoteId` values are valid; logical IDs are not physical Key Vault names.
+- Physical Key Vault names must differ case-insensitively from all three public logical `NoteId` values.
 - Razor accepts no route, query, form, or handler identifier input.
 - Query strings cannot alter or expand the catalog.
 - Raw identifier strings never reach `INoteContentProvider`, and the provider cannot enumerate notes.
@@ -86,16 +87,35 @@ The production application contains no test scheme, test-header handling, authen
 
 ## System-assigned Managed Identity
 
-A future deployed App Service will use a system-assigned Managed Identity as its workload identity. The identity lifecycle is tied to the App Service, reducing the need to manage a separate credential. The application will use `SecretClient` with `DefaultAzureCredential`; in Azure, the credential chain is expected to resolve to the App Service Managed Identity. This Key Vault integration is not implemented in B4-D6.
+A future deployed App Service will use a system-assigned Managed Identity as its workload identity. The identity lifecycle is tied to the App Service, reducing the need to manage a separate credential. The application will use `SecretClient` with `DefaultAzureCredential`; in Azure, the credential chain is expected to resolve to the App Service Managed Identity. This application integration is not implemented in B4-D7.
 
 ## Key Vault Azure RBAC
 
-Azure Key Vault will use Azure RBAC in the deferred target state. The expected data-plane role for the App Service Managed Identity is `Key Vault Secrets User`, scoped as narrowly as practical. Human users do not receive direct Key Vault access as part of the application reader role.
+The B4-D7 repository definition explicitly enables Azure RBAC on the development vault. The owner-run denial check after the first deployment proved that control-plane permission to deploy the vault did not grant secret data-plane access.
+
+Bootstrap grants the signed-in development user `Key Vault Secrets Officer` only at the individual vault and only for the bounded secret-creation procedure. Cleanup is attempted through `finally`; it is not guaranteed when Azure is unavailable. The script exits successfully only after a complete direct vault-scope query confirms Officer access is absent. The final Bicep deployment uses `deployer().objectId` to assign the identity executing that deployment `Key Vault Secrets User` at vault scope through a deterministic role assignment. The owner must use the same interactive identity for both deployments, bootstrap, and final validation. The built-in role definition ID, not its display name, is the declarative identity of the role.
+
+The repository owner must privately select and verify the intended Azure CLI active subscription before running any workflow. Each script captures that active subscription once without displaying account metadata and never changes the CLI context. The linked `.bicepparam` is the complete deployment parameter source and supplies no principal value; the deployment workflows use it without `--template-file` or inline overrides. Scripts 03 through 05 still resolve the current interactive user under the established context for temporary access and exact effective-permission validation.
+
+The B4-D7 owner-run sequence is complete. Initial deployment and negative data-plane validation succeeded; bootstrap created the exact three synthetic secrets; explicit `-ResumeExistingSecrets` partial-bootstrap recovery validated the already active secrets without secret writes or additional versions; `finally` cleanup proved temporary Officer absence; the final deployment added exactly one direct reader assignment for the development user; and final vault, secret, direct-role, and inherited-access validation succeeded. Scripts 01 and 02 preserve Azure CLI diagnostics in the private local terminal for investigation, while scripts 04 and 05 suppress raw Azure diagnostics and expose only script-generated sanitized reasons plus coarse markers. Shared security evidence remains limited to sanitized conclusions and markers; raw diagnostics, identifiers, URLs, principal data, and resource names must not be published.
+
+Normal bootstrap remains intentionally non-idempotent and accepts only an empty vault. The explicit `-ResumeExistingSecrets` recovery mode accepts exactly the three supplied active physical names, case-insensitively, and then performs the same read-only value, enabled-state, content-type, persisted 90-day lifetime, and one-version checks as normal validation. Recovery performs no secret set, attribute update, deletion, purge, recovery, disable, overwrite, or version creation. Any other non-empty state is rejected.
+
+Scripts 04 and 05 preserve JSON timestamps as their original ISO strings with `ConvertFrom-Json -DateKind String`. Field validation explicitly parses those strings as `DateTimeOffset` with invariant culture and normalizes them to UTC before comparing the persisted lifetime. Validation therefore does not depend on local date formatting, the operator's Windows culture, or daylight-saving transitions.
+
+Secret-version validation requests JSON without a CLI-side JMESPath count and counts the parsed collection locally. During bootstrap and recovery, that metadata read relied on the already approved temporary Officer assignment. The later persistent reader deployment restored the intended read-only access after `finally` removed Officer access. No additional or persistent write-capable data-plane role was introduced.
+
+Direct role assignments are not interchangeable with inherited effective permissions. Direct validation queries the vault scope without `--all` or `--include-inherited`, disables principal- and role-name filling, and filters exact scope locally. This global-across-principals view detects any direct Officer or application-identity assignment introduced at the vault. Effective inherited validation uses the vault scope, the current user's object ID, transitive-group expansion, and inherited-assignment inclusion, also without `--all`. An effective inherited role with Key Vault data actions invalidates the development least-privilege assumptions and causes sanitized failure as an unsupported precondition. Unrelated inherited assignments for other principals are excluded because they are not effective permissions of the development user.
+
+This human reader assignment is a local-development exception and is unrelated to `SecretNotes.Reader`. B4-D7 creates no application or Managed Identity assignment. The future App Service Managed Identity remains the expected application caller and will require a separate least-privilege decision in B4-D8 or a later milestone.
+
+The vault keeps public network access enabled so the repository owner can validate it locally. This is a documented development exception. Purge protection and seven-day soft-delete retention reduce accidental irreversible loss but also prevent immediate purge during teardown.
 
 ## Least-privilege principles
 
 - Grant users only the application role needed to view the protected feature.
-- Grant Key Vault data-plane access only to the Managed Identity.
+- Grant application Key Vault data-plane access only to the Managed Identity.
+- Limit the B4-D7 development-user exception to temporary Officer and final read-only User access at one vault.
 - Prefer read-only secret access; do not grant secret write, delete, purge, key, certificate, or management permissions to the application identity.
 - Keep the secret catalog closed and application-owned.
 - Avoid broad resource group, subscription, wildcard, or owner-style permissions.
@@ -111,7 +131,7 @@ The matrix distinguishes the current implemented application authorization state
 | Authenticated user with unrelated app role | Yes | No; denied | No | None | Implemented and covered by authorization tests; unrelated roles grant no access. |
 | User with `SecretNotes.Reader` | Yes | Yes; fixed synthetic catalog only | No | None through this app role | Implemented; the app role permits application feature use only. |
 | App Service Managed Identity | No human session | Not applicable | Future: yes | Deferred `Key Vault Secrets User` | Future workload identity used by `SecretClient`. |
-| Local developer identity | Yes when local authentication is configured | Depends on assigned app role | Only for future local Key Vault development if explicitly configured | Minimal temporary read access, if needed | Must not be documented with sensitive IDs or values. |
+| Local developer identity | Yes when local authentication is configured | Depends on assigned app role | Owner-run deployment, bootstrap, recovery, and validation only | Final direct `Key Vault Secrets User` at vault scope; temporary Officer removed | B4-D7 deployment and sanitized final validation completed successfully. |
 | Future CI/CD identity | No | Not applicable | No for runtime reads | Deployment permissions only, deferred | GitHub Actions OIDC is deferred. |
 
 ## Secure error-handling expectations
@@ -171,13 +191,23 @@ Automated through B4-D6:
 - Arbitrary `secretName` query resistance.
 - Closed-catalog, service-order, provider-mapping, cancellation, and read-only collection behavior.
 
-Deferred:
+Completed owner-run validation for B4-D7:
 
-- Managed Identity without Key Vault RBAC receives a safe failure with no secret disclosure.
-- Missing Key Vault secret receives a safe failure with no secret disclosure.
-- Key Vault dependency failure receives a safe failure with no sensitive disclosure.
-- Secret values are not exposed through logs or exceptions.
-- Physical Azure Key Vault secret names are never logged; approved application-owned logical `NoteId` values are logged only when necessary and safe.
+- Control-plane deployment did not grant the local user secret data-plane access.
+- Exactly three enabled synthetic secrets exist, each with one initial version and a validated persisted 90-day lifetime.
+- Secret metadata and values matched the expected fixtures through local comparison without printing values or physical names.
+- Temporary `Key Vault Secrets Officer` is absent; cleanup ran through `finally` and direct-scope absence was proven.
+- Partial-bootstrap recovery completed with the exact expected active names and no secret write, deletion, purge, or version creation.
+- Exactly one direct `Key Vault Secrets User` exists for the local user at the individual vault.
+- No direct application identity or Managed Identity assignment exists at the vault.
+- No unsupported inherited Key Vault data-plane permission is effective for the user or its transitive groups.
+- Evidence contains only sanitized markers, with no raw Azure errors, identifiers, URLs, principal data, or role objects.
+
+Still deferred to B4-D8 or later:
+
+- Managed Identity without Key Vault RBAC receives a safe application failure with no secret disclosure.
+- Missing Key Vault secret and dependency failures receive safe application failures.
+- The Key Vault provider never exposes physical names, values, or raw Azure errors.
 
 Continuing security scenarios:
 

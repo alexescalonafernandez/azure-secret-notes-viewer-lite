@@ -6,6 +6,9 @@
 # dotenv files
 .env
 
+# Local Azure deployment parameters
+infra/environments/development.bicepparam
+
 # User-specific files
 *.rsuser
 *.suo
