@@ -185,22 +185,20 @@ function Assert-SyntheticSecretFixture {
         throw 'synthetic-secret-expiration-invalid'
     }
 
-    $versionCountText = (
+    $versionsJsonLines = @(
         & az keyvault secret list-versions `
             --vault-name $VaultName `
             --name $Fixture.Name `
-            --query 'length(@)' `
             --subscription $script:subscriptionId `
-            --output tsv `
+            --output json `
             --only-show-errors 2>$null
     )
     if ($LASTEXITCODE -ne 0) {
         throw 'synthetic-secret-version-query-failed'
     }
-    if (
-        [string]::IsNullOrWhiteSpace([string] $versionCountText) -or
-        ([string] $versionCountText).Trim() -ne '1'
-    ) {
+    $versionsJson = $versionsJsonLines -join [Environment]::NewLine
+    $versions = @(ConvertFrom-SanitizedJson -Json $versionsJson)
+    if ($versions.Count -ne 1) {
         throw 'synthetic-secret-version-validation-failed'
     }
 }

@@ -3,11 +3,11 @@
 ## Status boundary
 
 - **Implemented in repository:** subscription-scope Bicep and six focused PowerShell workflow scripts.
-- **Owner-run result so far:** preflight, the initial infrastructure deployment, and the negative control/data-plane separation check succeeded. Bootstrap created all three secrets and removed temporary Officer access. The explicit read-only recovery later accepted the exact three-name set, then failed during expiration validation because PowerShell had localized automatically converted JSON timestamp values before invariant parsing. Recovery made no secret changes, and its `finally` cleanup removed the temporary Officer assignment.
+- **Owner-run result so far:** preflight, the initial infrastructure deployment, and the negative control/data-plane separation check succeeded. Bootstrap created all three secrets and removed temporary Officer access. Timestamp-corrected read-only recovery accepted the exact three-name set and validated the persisted fields, then a Windows-local CLI parsing failure occurred in the version-count command before its service request. Recovery made no secret changes, and its `finally` cleanup removed the temporary Officer assignment.
 - **Planned manual execution:** the repository owner runs the explicit read-only recovery path, performs the final reader-role deployment, and runs final validation while retaining only sanitized shared evidence.
 - **Validated only after the remaining owner-run steps:** persisted secret values and metadata, one-version state, final reader access, inherited-access assumptions, and the complete final Azure RBAC state.
 
-No Azure or Microsoft Entra mutation was executed while preparing this repository correction. Separately, the owner-run recovery performed no secret writes or version creation and removed its temporary `Key Vault Secrets Officer` assignment. The final reader assignment has not been deployed, final validation has not run, and the timestamp-corrected recovery path has not yet completed successfully. The application remains on `InMemoryNoteContentProvider`; Key Vault application integration is deferred to B4-D8.
+No Azure or Microsoft Entra mutation was executed while preparing this repository correction. Separately, the owner-run recovery performed no secret writes or version creation and removed its temporary `Key Vault Secrets Officer` assignment. The final reader assignment has not been deployed, final validation has not run, and the JSON-count recovery path has not yet completed successfully. The application remains on `InMemoryNoteContentProvider`; Key Vault application integration is deferred to B4-D8.
 
 ## Tool responsibilities
 
@@ -133,6 +133,8 @@ Final validation
 Each secret is enabled, has one initial version, uses `text/plain; purpose=synthetic-demo`, and expires approximately 90 days after its persisted creation timestamp in UTC. Validation allows a tolerance of 0.001 days (86.4 seconds) for service and CLI timestamp normalization. Physical secret names remain local and separate from every public logical `NoteId`. The scripts never create a fourth probe secret.
 
 PowerShell can otherwise materialize ISO-8601 JSON timestamps as `DateTime` values and format them with the operator's local culture when cast back to strings. Scripts 04 and 05 use `ConvertFrom-Json -DateKind String` so the original JSON timestamp representation remains a string. The existing explicit `DateTimeOffset.TryParse` checks then parse that ISO representation with invariant culture, normalize it to UTC, and remain independent of local date formatting and daylight-saving transitions.
+
+Version validation does not use the JMESPath `length(@)` expression. On the owner's Windows invocation that expression caused local command parsing to fail before the request reached Key Vault. Scripts 04 and 05 now request the complete version collection as JSON and count the sanitized parsed collection in PowerShell. Recovery performs that read while temporary Officer access is active and propagated. A manual version read after `temporary-officer-removed` is expected to be denied until the later persistent reader-role deployment; that denial is not a reason to add another data-plane role or weaken cleanup.
 
 ## Direct and inherited RBAC
 
