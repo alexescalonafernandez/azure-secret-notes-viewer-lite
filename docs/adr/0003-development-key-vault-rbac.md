@@ -1,6 +1,6 @@
 # ADR 0003: Development Key Vault RBAC bootstrap
 
-- Status: Accepted; repository implementation complete, Azure execution pending
+- Status: Accepted; repository implementation and owner-run Azure validation complete
 - Date: 2026-07-29
 
 ## Context
@@ -33,9 +33,10 @@ Do not create secrets in Bicep. Do not create persistent Officer, Administrator,
 - Public network access permits local validation but increases exposure relative to a private endpoint; this exception must not be copied into production without review.
 - Purge protection and seven-day retention improve recovery safety but prevent immediate purge and immediate vault-name reuse during teardown.
 - Secret values are intentionally synthetic, physical names remain local, and evidence is limited to coarse markers.
-- Preflight validates both the Bicep entry point and the ignored local `.bicepparam`. The first owner-run preflight succeeded, while the first `what-if` exposed the former split parameter-source design before any resource deployment.
+- The final owner-run sequence proved control-plane/data-plane separation, exact three-secret state, write-free partial-bootstrap recovery, temporary Officer cleanup, final individual reader access, direct-role separation, and the absence of unsupported inherited data-plane permission.
+- Historical corrections kept the linked `.bicepparam` complete, removed incompatible `--all` plus `--scope` role queries, made partial-bootstrap recovery explicit, preserved JSON timestamps with `-DateKind String`, and counted secret versions in PowerShell rather than with `length(@)`.
 - Scripts 01 and 02 leave Azure CLI errors visible for private local diagnosis; raw diagnostics must not be copied into shared evidence.
-- Repository completion does not prove Azure state. Validation is complete only after the owner runs the reviewed workflows.
+- Repository implementation and the sanitized owner-run Azure evidence together complete B4-D7.
 - Application behavior is unchanged. `InMemoryNoteContentProvider` remains active, and B4-D8 owns the future Key Vault adapter and workload-identity design.
 
 ## Alternatives considered

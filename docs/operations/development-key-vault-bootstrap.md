@@ -3,11 +3,22 @@
 ## Status boundary
 
 - **Implemented in repository:** subscription-scope Bicep and six focused PowerShell workflow scripts.
-- **Owner-run result so far:** preflight, the initial infrastructure deployment, and the negative control/data-plane separation check succeeded. Bootstrap created all three secrets and removed temporary Officer access. Timestamp-corrected read-only recovery accepted the exact three-name set and validated the persisted fields, then a Windows-local CLI parsing failure occurred in the version-count command before its service request. Recovery made no secret changes, and its `finally` cleanup removed the temporary Officer assignment.
-- **Planned manual execution:** the repository owner runs the explicit read-only recovery path, performs the final reader-role deployment, and runs final validation while retaining only sanitized shared evidence.
-- **Validated only after the remaining owner-run steps:** persisted secret values and metadata, one-version state, final reader access, inherited-access assumptions, and the complete final Azure RBAC state.
+- **Owner-run result:** initial deployment, negative control/data-plane validation, three-secret bootstrap and write-free recovery, temporary Officer cleanup, final reader-role deployment, and final validation all succeeded.
+- **Validated Azure state:** the Standard vault configuration, exact three enabled synthetic secrets, fixed values, content type, persisted 90-day lifetime, one-version state, final direct reader assignment, Officer absence, application-identity absence, and inherited-access assumptions all passed the sanitized checks.
+- **Milestone boundary:** B4-D7 is complete. B4-D8 owns the application-side Key Vault adapter and Azure SDK integration.
 
-No Azure or Microsoft Entra mutation was executed while preparing this repository correction. Separately, the owner-run recovery performed no secret writes or version creation and removed its temporary `Key Vault Secrets Officer` assignment. The final reader assignment has not been deployed, final validation has not run, and the JSON-count recovery path has not yet completed successfully. The application remains on `InMemoryNoteContentProvider`; Key Vault application integration is deferred to B4-D8.
+The final shared evidence is intentionally limited to sanitized markers:
+
+```text
+development-key-vault-deployed
+vault-configuration-valid
+reader-access-propagated
+synthetic-secrets-valid
+vault-role-state-valid
+development-key-vault-valid
+```
+
+No identifying Azure values or physical secret names are part of the evidence. The application remains on `InMemoryNoteContentProvider`; Key Vault application integration is deferred to B4-D8.
 
 ## Tool responsibilities
 
@@ -134,7 +145,7 @@ Each secret is enabled, has one initial version, uses `text/plain; purpose=synth
 
 PowerShell can otherwise materialize ISO-8601 JSON timestamps as `DateTime` values and format them with the operator's local culture when cast back to strings. Scripts 04 and 05 use `ConvertFrom-Json -DateKind String` so the original JSON timestamp representation remains a string. The existing explicit `DateTimeOffset.TryParse` checks then parse that ISO representation with invariant culture, normalize it to UTC, and remain independent of local date formatting and daylight-saving transitions.
 
-Version validation does not use the JMESPath `length(@)` expression. On the owner's Windows invocation that expression caused local command parsing to fail before the request reached Key Vault. Scripts 04 and 05 now request the complete version collection as JSON and count the sanitized parsed collection in PowerShell. Recovery performs that read while temporary Officer access is active and propagated. A manual version read after `temporary-officer-removed` is expected to be denied until the later persistent reader-role deployment; that denial is not a reason to add another data-plane role or weaken cleanup.
+Version validation does not use the JMESPath `length(@)` expression. On the owner's Windows invocation that expression caused local command parsing to fail before the request reached Key Vault. Scripts 04 and 05 request the complete version collection as JSON and count the sanitized parsed collection in PowerShell. During the two-phase bootstrap window, recovery performed that read while temporary Officer access was active and propagated; a manual read after cleanup was correctly denied until the final reader role was deployed. No additional data-plane role or cleanup weakening was required.
 
 ## Direct and inherited RBAC
 

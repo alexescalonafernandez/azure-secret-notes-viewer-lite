@@ -91,19 +91,19 @@ A future deployed App Service will use a system-assigned Managed Identity as its
 
 ## Key Vault Azure RBAC
 
-The B4-D7 repository definition explicitly enables Azure RBAC on the development vault. Control-plane permission to deploy the vault does not grant secret data-plane access; the owner-run denial check must prove that separation after the first deployment.
+The B4-D7 repository definition explicitly enables Azure RBAC on the development vault. The owner-run denial check after the first deployment proved that control-plane permission to deploy the vault did not grant secret data-plane access.
 
 Bootstrap grants the signed-in development user `Key Vault Secrets Officer` only at the individual vault and only for the bounded secret-creation procedure. Cleanup is attempted through `finally`; it is not guaranteed when Azure is unavailable. The script exits successfully only after a complete direct vault-scope query confirms Officer access is absent. The final Bicep deployment uses `deployer().objectId` to assign the identity executing that deployment `Key Vault Secrets User` at vault scope through a deterministic role assignment. The owner must use the same interactive identity for both deployments, bootstrap, and final validation. The built-in role definition ID, not its display name, is the declarative identity of the role.
 
 The repository owner must privately select and verify the intended Azure CLI active subscription before running any workflow. Each script captures that active subscription once without displaying account metadata and never changes the CLI context. The linked `.bicepparam` is the complete deployment parameter source and supplies no principal value; the deployment workflows use it without `--template-file` or inline overrides. Scripts 03 through 05 still resolve the current interactive user under the established context for temporary access and exact effective-permission validation.
 
-The owner-run preflight, initial infrastructure deployment, and negative control/data-plane separation check succeeded. Bootstrap created all three intended secrets, and `finally` cleanup removed temporary Officer access. Timestamp-corrected read-only recovery accepted the exact three-name set and validated persisted fields, then its JMESPath version-count argument failed in the local Windows command layer before an equivalent service request. Recovery made no secret changes or versions, and its `finally` cleanup removed the temporary Officer assignment. The final reader assignment and final validation remain pending, and the JSON-count recovery path has not yet completed successfully. Scripts 01 and 02 preserve Azure CLI diagnostics in the private local terminal for investigation, while scripts 04 and 05 suppress raw Azure diagnostics and expose only script-generated sanitized reasons plus coarse failure markers. Shared security evidence remains limited to sanitized conclusions and markers; raw diagnostics, identifiers, URLs, principal data, and resource names must not be published.
+The B4-D7 owner-run sequence is complete. Initial deployment and negative data-plane validation succeeded; bootstrap created the exact three synthetic secrets; explicit recovery validated them without secret writes or additional versions; `finally` cleanup proved temporary Officer absence; the final deployment added exactly one direct reader assignment for the development user; and final vault, secret, direct-role, and inherited-access validation succeeded. Scripts 01 and 02 preserve Azure CLI diagnostics in the private local terminal for investigation, while scripts 04 and 05 suppress raw Azure diagnostics and expose only script-generated sanitized reasons plus coarse markers. Shared security evidence remains limited to sanitized conclusions and markers; raw diagnostics, identifiers, URLs, principal data, and resource names must not be published.
 
 Normal bootstrap remains intentionally non-idempotent and accepts only an empty vault. The explicit `-ResumeExistingSecrets` recovery mode accepts exactly the three supplied active physical names, case-insensitively, and then performs the same read-only value, enabled-state, content-type, persisted 90-day lifetime, and one-version checks as normal validation. Recovery performs no secret set, attribute update, deletion, purge, recovery, disable, overwrite, or version creation. Any other non-empty state is rejected.
 
 Scripts 04 and 05 preserve JSON timestamps as their original ISO strings with `ConvertFrom-Json -DateKind String`. Field validation explicitly parses those strings as `DateTimeOffset` with invariant culture and normalizes them to UTC before comparing the persisted lifetime. Validation therefore does not depend on local date formatting, the operator's Windows culture, or daylight-saving transitions.
 
-Secret-version validation requests JSON without a CLI-side JMESPath count and counts the parsed collection locally. During bootstrap and recovery, that metadata read relies on the already approved temporary Officer assignment. Once `finally` removes Officer access, a manual metadata read is expected to be denied until the persistent reader role is deployed. No additional or persistent data-plane role is introduced to bypass that expected boundary.
+Secret-version validation requests JSON without a CLI-side JMESPath count and counts the parsed collection locally. During bootstrap and recovery, that metadata read relied on the already approved temporary Officer assignment. The later persistent reader deployment restored the intended read-only access after `finally` removed Officer access. No additional or persistent write-capable data-plane role was introduced.
 
 Direct role assignments are not interchangeable with inherited effective permissions. Direct validation queries the vault scope without `--all` or `--include-inherited`, disables principal- and role-name filling, and filters exact scope locally. This global-across-principals view detects any direct Officer or application-identity assignment introduced at the vault. Effective inherited validation uses the vault scope, the current user's object ID, transitive-group expansion, and inherited-assignment inclusion, also without `--all`. An effective inherited role with Key Vault data actions invalidates the development least-privilege assumptions and causes sanitized failure as an unsupported precondition. Unrelated inherited assignments for other principals are excluded because they are not effective permissions of the development user.
 
@@ -131,7 +131,7 @@ The matrix distinguishes the current implemented application authorization state
 | Authenticated user with unrelated app role | Yes | No; denied | No | None | Implemented and covered by authorization tests; unrelated roles grant no access. |
 | User with `SecretNotes.Reader` | Yes | Yes; fixed synthetic catalog only | No | None through this app role | Implemented; the app role permits application feature use only. |
 | App Service Managed Identity | No human session | Not applicable | Future: yes | Deferred `Key Vault Secrets User` | Future workload identity used by `SecretClient`. |
-| Local developer identity | Yes when local authentication is configured | Depends on assigned app role | Owner-run deployment, bootstrap, recovery, and validation only | Temporary `Key Vault Secrets Officer`, then final `Key Vault Secrets User`, both at vault scope | Initial deployment and denial check succeeded; three secrets exist and Officer cleanup succeeded, while read-only recovery and final validation remain pending. |
+| Local developer identity | Yes when local authentication is configured | Depends on assigned app role | Owner-run deployment, bootstrap, recovery, and validation only | Final direct `Key Vault Secrets User` at vault scope; temporary Officer removed | B4-D7 deployment and sanitized final validation completed successfully. |
 | Future CI/CD identity | No | Not applicable | No for runtime reads | Deployment permissions only, deferred | GitHub Actions OIDC is deferred. |
 
 ## Secure error-handling expectations
@@ -191,17 +191,17 @@ Automated through B4-D6:
 - Arbitrary `secretName` query resistance.
 - Closed-catalog, service-order, provider-mapping, cancellation, and read-only collection behavior.
 
-Planned owner-run validation for B4-D7:
+Completed owner-run validation for B4-D7:
 
-- Control-plane deployment does not grant the local user secret data-plane access.
-- Exactly three enabled synthetic secrets exist, each with one initial version and a 90-day UTC expiration.
-- Secret metadata and values are compared locally without printing values or physical names.
-- Temporary `Key Vault Secrets Officer` is absent after bootstrap; cleanup is attempted through `finally` and absence is queried, not assumed.
-- Partial-bootstrap recovery accepts only the exact three expected active names and performs no secret write, deletion, purge, or version creation.
-- Final `Key Vault Secrets User` exists for the local user at the individual vault.
-- No application identity or Managed Identity assignment exists at the vault.
-- Inherited Key Vault data-plane permission causes sanitized failure as an unsupported precondition.
-- Evidence contains only coarse markers, with no raw Azure errors, identifiers, URLs, principal data, or role objects.
+- Control-plane deployment did not grant the local user secret data-plane access.
+- Exactly three enabled synthetic secrets exist, each with one initial version and a validated persisted 90-day lifetime.
+- Secret metadata and values matched the expected fixtures through local comparison without printing values or physical names.
+- Temporary `Key Vault Secrets Officer` is absent; cleanup ran through `finally` and direct-scope absence was proven.
+- Partial-bootstrap recovery completed with the exact expected active names and no secret write, deletion, purge, or version creation.
+- Exactly one direct `Key Vault Secrets User` exists for the local user at the individual vault.
+- No direct application identity or Managed Identity assignment exists at the vault.
+- No unsupported inherited Key Vault data-plane permission is effective for the user or its transitive groups.
+- Evidence contains only sanitized markers, with no raw Azure errors, identifiers, URLs, principal data, or role objects.
 
 Still deferred to B4-D8 or later:
 

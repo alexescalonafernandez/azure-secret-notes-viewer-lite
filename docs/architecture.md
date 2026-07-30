@@ -8,7 +8,7 @@ The application user never accesses Azure Key Vault directly. The web applicatio
 
 ### Deferred application target state
 
-The complete diagram below remains the deferred application target state. B4-D7 implements the repository definition and owner-run workflows for the development Key Vault. The repository owner has completed the initial infrastructure deployment and negative data-plane validation. Bootstrap created the three intended secrets and removed temporary Officer access. Timestamp-corrected read-only recovery accepted the exact name set and validated persisted fields, then encountered a local Windows command-parsing defect in the CLI-side version-count expression; it made no secret changes and removed temporary Officer access. JSON-count recovery, the final reader-role deployment, and final validation remain incomplete. App Service deployment, the Key Vault provider adapter and logical-to-physical mapping, `SecretClient`, `DefaultAzureCredential`, Managed Identity, application-identity RBAC, telemetry, and CI/CD remain deferred.
+The complete diagram below remains the deferred application target state. B4-D7 is complete: the repository owner deployed and validated the development Key Vault, proved control-plane/data-plane separation, created and recovered the exact three synthetic secrets without additional versions, verified temporary Officer cleanup, and deployed the final individual reader assignment. App Service deployment, the Key Vault provider adapter and logical-to-physical mapping, `SecretClient`, `DefaultAzureCredential`, Managed Identity, application-identity RBAC, telemetry, and CI/CD remain deferred to B4-D8 or later.
 
 ```mermaid
 flowchart LR
@@ -91,9 +91,9 @@ Direct vault-scoped assignments and inherited effective permissions are separate
 
 The vault definition enables Azure RBAC, purge protection, seven-day soft-delete retention, and public network access. Public access is a documented development exception for local validation, not a production network design.
 
-`00-preflight.ps1` validates both `main.bicep` and the ignored local `.bicepparam`. The owner-run preflight, initial infrastructure deployment, and negative control/data-plane check succeeded. Bootstrap created the three secrets and removed temporary Officer access. Timestamp-corrected recovery reached exact-name-set and persisted-field validation without changing secret state, but its CLI-side JMESPath version-count expression failed locally before the service request; `finally` again removed Officer access. Scripts 04 and 05 now request version collections as JSON and count them in PowerShell while temporary Officer access is active. A manual read after cleanup is expected to be denied until the final reader role is deployed, so the RBAC lifecycle remains unchanged. The corrected recovery has not yet completed successfully.
+`00-preflight.ps1` validates both `main.bicep` and the ignored local `.bicepparam`. The final owner-run path completed successfully: initial deployment, negative data-plane validation, bootstrap recovery, temporary Officer cleanup, final reader deployment, and final vault/secret/RBAC validation all passed. Historical corrections kept the linked `.bicepparam` self-contained, removed incompatible `--all` plus `--scope` role queries, added explicit write-free partial-bootstrap recovery, preserved JSON timestamps with `-DateKind String`, and moved secret-version counting from `length(@)` into PowerShell.
 
-Scripts 04 and 05 suppress raw Azure diagnostics while preserving script-generated sanitized failure reasons and coarse failure markers. Remaining Azure state is validated only after the repository owner successfully runs the corrected recovery, final deployment, and final validation. B4-D8 remains responsible for the application adapter; `INoteContentProvider` continues to use `InMemoryNoteContentProvider`.
+Scripts 04 and 05 suppress raw Azure diagnostics while preserving script-generated sanitized failure reasons and coarse markers. B4-D7 Azure state is owner-validated. B4-D8 remains responsible for the application adapter and Azure SDK integration; `INoteContentProvider` continues to use `InMemoryNoteContentProvider`.
 
 ## Actors and Azure components
 
@@ -169,7 +169,7 @@ Human identity and workload identity are intentionally separate:
 
 ## Azure resource status
 
-- Development Resource Group and Standard Key Vault: initial owner deployment and negative data-plane validation succeeded; three active synthetic secrets exist and temporary Officer cleanup succeeded, while read-only recovery, final reader-role deployment, and final validation remain pending.
+- Development Resource Group and Standard Key Vault: deployed and validated for B4-D7, including the final individual reader role, exact three-secret state, and absence of temporary or application-identity vault assignments.
 - Azure App Service Plan sized for low-cost learning usage.
 - Azure App Service with a system-assigned Managed Identity.
 - Application Insights connected to a Log Analytics workspace, with implementation deferred to a later milestone and conservative telemetry, sampling, retention, and cost controls.

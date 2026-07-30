@@ -1,6 +1,6 @@
 # Secret Notes Viewer Lite
 
-Secret Notes Viewer Lite is a security-focused Azure learning project for a small web application that displays a closed set of synthetic demonstration notes. The repository includes a locally runnable ASP.NET Core Razor Pages application with Microsoft Entra authentication, a server-side authorization boundary for `/Notes`, an application-owned closed catalog, and repository-backed development Key Vault infrastructure. The repository owner has not yet executed the Azure deployment or bootstrap workflows.
+Secret Notes Viewer Lite is a security-focused Azure learning project for a small web application that displays a closed set of synthetic demonstration notes. The repository includes a locally runnable ASP.NET Core Razor Pages application with Microsoft Entra authentication, a server-side authorization boundary for `/Notes`, an application-owned closed catalog, and an owner-deployed and validated development Key Vault defined by repository-backed infrastructure.
 
 ## Learning objectives
 
@@ -32,7 +32,7 @@ The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages w
 
 The repository now implements subscription-scope Bicep for a dedicated development Resource Group, a Standard Key Vault in West Europe, and an optional vault-scoped `Key Vault Secrets User` assignment. The linked `.bicepparam` is the complete deployment parameter source, while Bicep resolves the final deployment identity with `deployer().objectId`. Six focused PowerShell workflows cover local preflight, sanitized `what-if`, deployment, negative data-plane validation, temporary bootstrap access, synthetic-secret creation, cleanup, and final validation. They use PowerShell because the workflows contain validation and control flow; `.azcli` remains reserved for genuinely linear Azure CLI scrapbooks.
 
-This branch contains implementation only. The owner-run preflight succeeded, but the first attempted `what-if` exposed the linked-parameter incompatibility before any Azure resource deployment occurred. The corrected `what-if`, deployment, bootstrap, and validation remain planned owner actions. Application behavior is unchanged: `INoteContentProvider` still resolves to `InMemoryNoteContentProvider`; Key Vault application integration, App Service, Managed Identity, telemetry, and CI/CD remain deferred.
+B4-D7 is complete. The owner successfully deployed the initial vault, proved that control-plane deployment did not grant secret data-plane access, created and recovered the exact three synthetic secrets without adding versions, verified temporary Officer cleanup, deployed the final vault-scoped `Key Vault Secrets User` assignment, and completed sanitized vault, secret, and RBAC validation. Application behavior is unchanged: `INoteContentProvider` still resolves to `InMemoryNoteContentProvider`; B4-D8 owns the Key Vault adapter and Azure SDK integration, while App Service, Managed Identity, telemetry, and CI/CD remain deferred.
 
 ## Application structure
 
@@ -77,7 +77,6 @@ After the application starts, open `https://localhost:7164`. `GET /` displays th
 - Azure Key Vault retrieval
 - Managed Identity
 - Application identity Azure RBAC
-- Owner-run Azure deployment and validation
 - Application Insights
 - CI/CD
 
