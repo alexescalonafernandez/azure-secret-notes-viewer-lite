@@ -17,7 +17,7 @@ public sealed class KeyVaultNoteContentProviderTests
         string expectedPhysicalName)
     {
         var client = new StubSecretClient(
-            (name, _, _) => ResponseWithValue(name, "value-from-key-vault"));
+            (name, _, _, _) => ResponseWithValue(name, "value-from-key-vault"));
         var provider = CreateProvider(client);
 
         var result = await provider.GetContentAsync(noteId);
@@ -25,6 +25,7 @@ public sealed class KeyVaultNoteContentProviderTests
         Assert.Equal("value-from-key-vault", result);
         Assert.Equal(expectedPhysicalName, client.RequestedName);
         Assert.Null(client.RequestedVersion);
+        Assert.Null(client.RequestedOutContentType);
         Assert.Equal(1, client.CallCount);
     }
 
@@ -33,7 +34,7 @@ public sealed class KeyVaultNoteContentProviderTests
     {
         using var source = new CancellationTokenSource();
         var client = new StubSecretClient(
-            (name, _, _) => ResponseWithValue(name, "value"));
+            (name, _, _, _) => ResponseWithValue(name, "value"));
         var provider = CreateProvider(client);
 
         await provider.GetContentAsync(NoteId.Operations, source.Token);
@@ -48,7 +49,7 @@ public sealed class KeyVaultNoteContentProviderTests
     public async Task MissingValueProducesSafeException(string? value)
     {
         var client = new StubSecretClient(
-            (name, _, _) => ResponseWithValue(name, value));
+            (name, _, _, _) => ResponseWithValue(name, value));
         var provider = CreateProvider(client);
 
         var exception = await Assert.ThrowsAsync<NoteContentUnavailableException>(
@@ -61,7 +62,7 @@ public sealed class KeyVaultNoteContentProviderTests
     public async Task RequestFailureProducesSafeException()
     {
         var client = new StubSecretClient(
-            (_, _, _) => throw new RequestFailedException(
+            (_, _, _, _) => throw new RequestFailedException(
                 403,
                 "raw request failure with private-operations"));
         var provider = CreateProvider(client);
@@ -76,7 +77,7 @@ public sealed class KeyVaultNoteContentProviderTests
     public async Task AuthenticationFailureProducesSafeException()
     {
         var client = new StubSecretClient(
-            (_, _, _) => throw new AuthenticationFailedException(
+            (_, _, _, _) => throw new AuthenticationFailedException(
                 "raw authentication failure with unit-test.invalid"));
         var provider = CreateProvider(client);
 
@@ -92,7 +93,7 @@ public sealed class KeyVaultNoteContentProviderTests
         using var source = new CancellationTokenSource();
         source.Cancel();
         var client = new StubSecretClient(
-            (_, _, cancellationToken) =>
+            (_, _, _, cancellationToken) =>
                 throw new OperationCanceledException(cancellationToken));
         var provider = CreateProvider(client);
 
@@ -107,7 +108,7 @@ public sealed class KeyVaultNoteContentProviderTests
     public async Task UnknownNoteDoesNotCallSecretClient()
     {
         var client = new StubSecretClient(
-            (_, _, _) => throw new InvalidOperationException(
+            (_, _, _, _) => throw new InvalidOperationException(
                 "The client must not be called."));
         var provider = CreateProvider(client);
 
@@ -173,6 +174,7 @@ public sealed class KeyVaultNoteContentProviderTests
         private readonly Func<
             string,
             string?,
+            SecretContentType?,
             CancellationToken,
             Response<KeyVaultSecret>> responseFactory;
 
@@ -180,6 +182,7 @@ public sealed class KeyVaultNoteContentProviderTests
             Func<
                 string,
                 string?,
+                SecretContentType?,
                 CancellationToken,
                 Response<KeyVaultSecret>> responseFactory)
             : base()
@@ -191,6 +194,8 @@ public sealed class KeyVaultNoteContentProviderTests
 
         public string? RequestedVersion { get; private set; }
 
+        public SecretContentType? RequestedOutContentType { get; private set; }
+
         public CancellationToken RequestedCancellationToken { get; private set; }
 
         public int CallCount { get; private set; }
@@ -198,15 +203,21 @@ public sealed class KeyVaultNoteContentProviderTests
         public override Task<Response<KeyVaultSecret>> GetSecretAsync(
             string name,
             string? version = null,
+            SecretContentType? outContentType = null,
             CancellationToken cancellationToken = default)
         {
             CallCount++;
             RequestedName = name;
             RequestedVersion = version;
+            RequestedOutContentType = outContentType;
             RequestedCancellationToken = cancellationToken;
 
             return Task.FromResult(
-                responseFactory(name, version, cancellationToken));
+                responseFactory(
+                    name,
+                    version,
+                    outContentType,
+                    cancellationToken));
         }
     }
 

@@ -55,10 +55,25 @@ This is intentionally an owner-run procedure. It must not be automated by Codex.
        --launch-profile https
    ```
 
-4. Sign in through the browser with a user assigned `SecretNotes.Reader`.
-5. Open `/Notes` and confirm the fixed three-note order and expected synthetic values without copying values into evidence.
-6. Confirm that arbitrary `noteId` and `secretName` query strings do not change membership, order, or content selection.
-7. Stop the application. Record only a sanitized pass/fail conclusion; do not capture raw Azure errors or note content.
+4. Complete the validation checklist:
+
+   - [ ] The application starts with `Provider=KeyVault`.
+   - [ ] `GET /` remains available.
+   - [ ] `GET /Privacy` remains available.
+   - [ ] `GET /health` remains available.
+   - [ ] Anonymous `/Notes` still initiates the Microsoft Entra challenge.
+   - [ ] An assigned user can open `/Notes`.
+   - [ ] Exactly three notes are displayed.
+   - [ ] Catalog order is unchanged.
+   - [ ] All three expected synthetic values are retrieved from Key Vault.
+   - [ ] `/Notes?noteId=unknown` does not alter membership, order, or selection.
+   - [ ] `/Notes?secretName=arbitrary` does not alter membership, order, or selection.
+   - [ ] `/Notes` responses retain `Cache-Control: no-store` behavior.
+   - [ ] No identity, role, claim, token, vault URI, physical secret name, or Azure identifier is rendered.
+   - [ ] Application logs contain no note values or physical secret names.
+   - [ ] No raw Azure diagnostic is published.
+
+5. Stop the application. Record only a sanitized pass/fail conclusion. Do not publish screenshots, HTTP headers containing private data, logs, User Secrets, account metadata, Azure errors, or note values.
 
 ## Return to the committed default
 
@@ -70,3 +85,9 @@ dotnet user-secrets set "NoteContent:Provider" "InMemory" `
 ```
 
 The application then registers only `InMemoryNoteContentProvider`; it does not bind Key Vault options or register `AzureCliCredential` or `SecretClient`.
+
+Validate this explicit startup provider selection:
+
+- [ ] The application starts without requiring Key Vault configuration or Azure access.
+- [ ] `INoteContentProvider` resolves to the deterministic in-memory path.
+- [ ] `/Notes` retains the same fixed catalog and authorization behavior.

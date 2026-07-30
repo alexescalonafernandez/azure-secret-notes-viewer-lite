@@ -29,6 +29,7 @@ public sealed class KeyVaultNoteContentProvider : INoteContentProvider
             var response = await secretClient.GetSecretAsync(
                 physicalName,
                 version: null,
+                outContentType: null,
                 cancellationToken: cancellationToken);
             var content = response.Value.Value;
 

@@ -182,7 +182,7 @@ Users must not provide arbitrary secret names, query strings, or route values th
 - **Application to Microsoft Entra ID:** Authentication depends on configured tenant and application registration metadata.
 - **Application authorization boundary:** `/Notes` requires the `ReadSecretNotes` policy and its `SecretNotes.Reader` role requirement before the notes service executes.
 - **Application service boundary:** The PageModel accepts no identifier input. `ReadNotesService` reads only `ClosedNoteCatalog`, and the provider accepts only known logical `NoteId` values.
-- **Application to Azure Key Vault:** Only the workload identity crosses this boundary; the human user's token is not used for Key Vault access.
+- **Application to Azure Key Vault:** In B4-D8 local mode, the server-side Azure CLI development identity crosses this boundary. In the future deployed state, the App Service workload identity will cross it. The browser user's token never crosses this boundary.
 - **Operational evidence boundary:** Screenshots, logs, terminal output, Issues, and pull requests must not contain secret values or sensitive identifiers.
 
 ## Human identity vs. workload identity

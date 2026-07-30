@@ -12,7 +12,7 @@ Secret Notes Viewer Lite is a security-focused Azure learning project for a smal
 
 ## Lite scope
 
-The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages web app, one protected `/Notes` area, an application-owned catalog of known logical note identifiers, and a repository-defined Azure Key Vault whose application integration is deferred. Users will never submit arbitrary Key Vault secret names, and application users will never access Key Vault directly.
+The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages web app, one protected `/Notes` area, an application-owned catalog of known logical note identifiers, and a repository-defined Azure Key Vault with an implemented optional local provider, while deployed application integration remains deferred. Users will never submit arbitrary Key Vault secret names, and application users will never access Key Vault directly.
 
 ## Planned technology baseline
 
