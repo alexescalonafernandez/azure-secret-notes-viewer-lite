@@ -3,7 +3,7 @@
 ## Protected assets
 
 - The implemented `/Notes` application authorization boundary and fixed synthetic catalog.
-- Synthetic demonstration secret values stored in Azure Key Vault in later milestones.
+- Synthetic demonstration secret values stored in the B4-D7 development Key Vault; application retrieval remains deferred to B4-D8.
 - The closed catalog of approved logical note identifiers used by the application.
 - Microsoft Entra ID application registration and app-role assignments.
 - App Service system-assigned Managed Identity.
@@ -97,7 +97,7 @@ Bootstrap grants the signed-in development user `Key Vault Secrets Officer` only
 
 The repository owner must privately select and verify the intended Azure CLI active subscription before running any workflow. Each script captures that active subscription once without displaying account metadata and never changes the CLI context. The linked `.bicepparam` is the complete deployment parameter source and supplies no principal value; the deployment workflows use it without `--template-file` or inline overrides. Scripts 03 through 05 still resolve the current interactive user under the established context for temporary access and exact effective-permission validation.
 
-The B4-D7 owner-run sequence is complete. Initial deployment and negative data-plane validation succeeded; bootstrap created the exact three synthetic secrets; explicit recovery validated them without secret writes or additional versions; `finally` cleanup proved temporary Officer absence; the final deployment added exactly one direct reader assignment for the development user; and final vault, secret, direct-role, and inherited-access validation succeeded. Scripts 01 and 02 preserve Azure CLI diagnostics in the private local terminal for investigation, while scripts 04 and 05 suppress raw Azure diagnostics and expose only script-generated sanitized reasons plus coarse markers. Shared security evidence remains limited to sanitized conclusions and markers; raw diagnostics, identifiers, URLs, principal data, and resource names must not be published.
+The B4-D7 owner-run sequence is complete. Initial deployment and negative data-plane validation succeeded; bootstrap created the exact three synthetic secrets; explicit `-ResumeExistingSecrets` partial-bootstrap recovery validated the already active secrets without secret writes or additional versions; `finally` cleanup proved temporary Officer absence; the final deployment added exactly one direct reader assignment for the development user; and final vault, secret, direct-role, and inherited-access validation succeeded. Scripts 01 and 02 preserve Azure CLI diagnostics in the private local terminal for investigation, while scripts 04 and 05 suppress raw Azure diagnostics and expose only script-generated sanitized reasons plus coarse markers. Shared security evidence remains limited to sanitized conclusions and markers; raw diagnostics, identifiers, URLs, principal data, and resource names must not be published.
 
 Normal bootstrap remains intentionally non-idempotent and accepts only an empty vault. The explicit `-ResumeExistingSecrets` recovery mode accepts exactly the three supplied active physical names, case-insensitively, and then performs the same read-only value, enabled-state, content-type, persisted 90-day lifetime, and one-version checks as normal validation. Recovery performs no secret set, attribute update, deletion, purge, recovery, disable, overwrite, or version creation. Any other non-empty state is rejected.
 

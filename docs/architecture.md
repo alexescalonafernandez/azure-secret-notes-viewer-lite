@@ -8,7 +8,7 @@ The application user never accesses Azure Key Vault directly. The web applicatio
 
 ### Deferred application target state
 
-The complete diagram below remains the deferred application target state. B4-D7 is complete: the repository owner deployed and validated the development Key Vault, proved control-plane/data-plane separation, created and recovered the exact three synthetic secrets without additional versions, verified temporary Officer cleanup, and deployed the final individual reader assignment. App Service deployment, the Key Vault provider adapter and logical-to-physical mapping, `SecretClient`, `DefaultAzureCredential`, Managed Identity, application-identity RBAC, telemetry, and CI/CD remain deferred to B4-D8 or later.
+The complete diagram below remains the deferred application target state. B4-D7 is complete: the repository owner deployed and validated the development Key Vault, proved control-plane/data-plane separation, created the exact three synthetic secrets and completed write-free partial-bootstrap recovery without additional versions, verified temporary Officer cleanup, and deployed the final individual reader assignment. App Service deployment, the Key Vault provider adapter and logical-to-physical mapping, `SecretClient`, `DefaultAzureCredential`, Managed Identity, application-identity RBAC, telemetry, and CI/CD remain deferred to B4-D8 or later.
 
 ```mermaid
 flowchart LR
@@ -91,7 +91,7 @@ Direct vault-scoped assignments and inherited effective permissions are separate
 
 The vault definition enables Azure RBAC, purge protection, seven-day soft-delete retention, and public network access. Public access is a documented development exception for local validation, not a production network design.
 
-`00-preflight.ps1` validates both `main.bicep` and the ignored local `.bicepparam`. The final owner-run path completed successfully: initial deployment, negative data-plane validation, bootstrap recovery, temporary Officer cleanup, final reader deployment, and final vault/secret/RBAC validation all passed. Historical corrections kept the linked `.bicepparam` self-contained, removed incompatible `--all` plus `--scope` role queries, added explicit write-free partial-bootstrap recovery, preserved JSON timestamps with `-DateKind String`, and moved secret-version counting from `length(@)` into PowerShell.
+`00-preflight.ps1` validates both `main.bicep` and the ignored local `.bicepparam`. The final owner-run path completed successfully: initial deployment, negative data-plane validation, write-free partial-bootstrap recovery, temporary Officer cleanup, final reader deployment, and final vault/secret/RBAC validation all passed. Historical corrections kept the linked `.bicepparam` self-contained, removed incompatible `--all` plus `--scope` role queries, added explicit write-free partial-bootstrap recovery, preserved JSON timestamps with `-DateKind String`, and moved secret-version counting from `length(@)` into PowerShell.
 
 Scripts 04 and 05 suppress raw Azure diagnostics while preserving script-generated sanitized failure reasons and coarse markers. B4-D7 Azure state is owner-validated. B4-D8 remains responsible for the application adapter and Azure SDK integration; `INoteContentProvider` continues to use `InMemoryNoteContentProvider`.
 
@@ -102,7 +102,7 @@ Scripts 04 and 05 suppress raw Azure diagnostics while preserving script-generat
 - **ASP.NET Core Razor Pages:** The planned web application and user authorization enforcement point.
 - **Azure App Service:** The planned hosting platform for the Razor Pages application.
 - **System-assigned Managed Identity:** The workload identity attached to App Service and used by the application to authenticate to Azure Key Vault.
-- **Azure Key Vault:** The planned secret store for synthetic demonstration note values.
+- **Azure Key Vault:** The deployed and validated B4-D7 development secret store for synthetic demonstration note values; application retrieval remains deferred.
 - **Azure RBAC:** The authorization system used to grant the Managed Identity data-plane access to Key Vault secrets.
 
 ## Development identity bootstrap
@@ -170,9 +170,9 @@ Human identity and workload identity are intentionally separate:
 ## Azure resource status
 
 - Development Resource Group and Standard Key Vault: deployed and validated for B4-D7, including the final individual reader role, exact three-secret state, and absence of temporary or application-identity vault assignments.
-- Azure App Service Plan sized for low-cost learning usage.
-- Azure App Service with a system-assigned Managed Identity.
-- Application Insights connected to a Log Analytics workspace, with implementation deferred to a later milestone and conservative telemetry, sampling, retention, and cost controls.
+- Azure App Service Plan: planned and deferred.
+- Azure App Service with system-assigned Managed Identity: planned and deferred.
+- Application Insights and Log Analytics: planned and deferred, with conservative telemetry, sampling, retention, and cost controls required by a later milestone.
 
 ## Non-sensitive application configuration
 

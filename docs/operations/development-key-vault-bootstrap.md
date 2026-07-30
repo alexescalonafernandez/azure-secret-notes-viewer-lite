@@ -3,7 +3,7 @@
 ## Status boundary
 
 - **Implemented in repository:** subscription-scope Bicep and six focused PowerShell workflow scripts.
-- **Owner-run result:** initial deployment, negative control/data-plane validation, three-secret bootstrap and write-free recovery, temporary Officer cleanup, final reader-role deployment, and final validation all succeeded.
+- **Owner-run result:** initial deployment, negative control/data-plane validation, three-secret bootstrap and write-free partial-bootstrap recovery, temporary Officer cleanup, final reader-role deployment, and final validation all succeeded.
 - **Validated Azure state:** the Standard vault configuration, exact three enabled synthetic secrets, fixed values, content type, persisted 90-day lifetime, one-version state, final direct reader assignment, Officer absence, application-identity absence, and inherited-access assumptions all passed the sanitized checks.
 - **Milestone boundary:** B4-D7 is complete. B4-D8 owns the application-side Key Vault adapter and Azure SDK integration.
 
