@@ -38,7 +38,7 @@ builder.Services
     .AddRazorPages()
     .AddMicrosoftIdentityUI();
 
-builder.Services.AddSingleton<INoteContentProvider, InMemoryNoteContentProvider>();
+builder.Services.AddNoteContentProvider(builder.Configuration);
 builder.Services.AddSingleton<IReadNotesService, ReadNotesService>();
 
 builder.Services.AddHealthChecks();
