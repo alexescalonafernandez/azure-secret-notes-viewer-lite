@@ -8,7 +8,7 @@ The application user never accesses Azure Key Vault directly. The web applicatio
 
 ### Deferred application target state
 
-The complete diagram below remains the deferred application target state. B4-D7 implements the repository definition and owner-run workflows for the development Key Vault, but the repository owner has not deployed them at branch-publication time. App Service deployment, the Key Vault provider adapter and logical-to-physical mapping, `SecretClient`, `DefaultAzureCredential`, Managed Identity, application-identity RBAC, telemetry, and CI/CD remain deferred.
+The complete diagram below remains the deferred application target state. B4-D7 implements the repository definition and owner-run workflows for the development Key Vault. The repository owner has completed the initial infrastructure deployment and negative data-plane validation; bootstrap, the final reader-role deployment, and final validation remain incomplete. App Service deployment, the Key Vault provider adapter and logical-to-physical mapping, `SecretClient`, `DefaultAzureCredential`, Managed Identity, application-identity RBAC, telemetry, and CI/CD remain deferred.
 
 ```mermaid
 flowchart LR
@@ -87,13 +87,13 @@ Before execution, the repository owner privately selects and verifies the intend
 
 The owner-run sequence is intentionally two phase. The first deployment disables the final reader assignment, allowing the denial script to prove that control-plane creation does not imply Key Vault data-plane access. Bootstrap then grants the signed-in user `Key Vault Secrets Officer` temporarily at the individual vault, creates and validates exactly three synthetic secrets, and attempts to remove that role in `finally`. The script succeeds only when a complete direct vault-scope query validates that the temporary assignment is absent. The second deployment enables the deterministic, persistent `Key Vault Secrets User` assignment for the deployment identity at the same vault scope. The owner must maintain the same signed-in identity across both deployments, bootstrap, and final validation.
 
-Direct vault-scoped assignments and inherited effective permissions are separate security facts. Direct-state checks remain global: they enumerate all assignments at the vault and filter the exact scope locally so milestone-created Officer and application-identity assignments cannot be hidden by a principal filter. Final inherited-access validation is instead limited to the current development user and its transitive groups. It rejects effective inherited Key Vault data-plane actions as an unsupported least-privilege precondition; unrelated inherited assignments for other principals do not represent that user's effective access.
+Direct vault-scoped assignments and inherited effective permissions are separate security facts. Direct-state checks remain global across principals: they query `--scope <vault-scope>` without `--all` or `--include-inherited` and filter the exact scope locally so milestone-created Officer and application-identity assignments cannot be hidden by a principal filter. Final inherited-access validation uses the same vault scope with the current user's object ID, transitive-group expansion, and inherited-assignment inclusion, also without `--all`. It rejects effective inherited Key Vault data-plane actions as an unsupported least-privilege precondition; unrelated inherited assignments for other principals do not represent that user's effective access.
 
 The vault definition enables Azure RBAC, purge protection, seven-day soft-delete retention, and public network access. Public access is a documented development exception for local validation, not a production network design.
 
-`00-preflight.ps1` validates both `main.bicep` and the ignored local `.bicepparam`. The owner-run preflight succeeded, but the first `what-if` exposed the former split parameter-source design before any Azure resource deployment occurred. Scripts 01 and 02 now leave Azure CLI diagnostics visible in the owner's private terminal; those raw diagnostics must not become shared evidence.
+`00-preflight.ps1` validates both `main.bicep` and the ignored local `.bicepparam`. The owner-run preflight, initial infrastructure deployment, and negative control/data-plane check succeeded. The first bootstrap attempt failed before any role or secret creation because Azure CLI rejects the combination of `az role assignment list --all --scope <vault-scope>`; this was a CLI compatibility issue, not an RBAC permission failure. The corrected bootstrap has not yet completed successfully.
 
-Implemented in repository does not mean deployed. Azure state is validated only after the repository owner successfully runs the reviewed workflows. B4-D8 remains responsible for the application adapter; `INoteContentProvider` continues to use `InMemoryNoteContentProvider`.
+Scripts 04 and 05 suppress raw Azure diagnostics while preserving script-generated sanitized failure reasons and coarse failure markers. Remaining Azure state is validated only after the repository owner successfully runs the corrected bootstrap, final deployment, and final validation. B4-D8 remains responsible for the application adapter; `INoteContentProvider` continues to use `InMemoryNoteContentProvider`.
 
 ## Actors and Azure components
 
@@ -169,7 +169,7 @@ Human identity and workload identity are intentionally separate:
 
 ## Azure resource status
 
-- Development Resource Group and Standard Key Vault: implemented in Bicep; planned for manual owner deployment and validation.
+- Development Resource Group and Standard Key Vault: initial owner deployment and negative data-plane validation succeeded; bootstrap, final reader-role deployment, and final validation remain pending.
 - Azure App Service Plan sized for low-cost learning usage.
 - Azure App Service with a system-assigned Managed Identity.
 - Application Insights connected to a Log Analytics workspace, with implementation deferred to a later milestone and conservative telemetry, sampling, retention, and cost controls.

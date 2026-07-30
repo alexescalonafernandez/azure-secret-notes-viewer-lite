@@ -3,11 +3,11 @@
 ## Status boundary
 
 - **Implemented in repository:** subscription-scope Bicep and six focused PowerShell workflow scripts.
-- **Owner-run result so far:** preflight succeeded; the first attempted `what-if` exposed an incompatible linked-parameter and inline-override design before any Azure resource deployment occurred.
-- **Planned manual execution:** the repository owner reruns preflight, reviews the corrected `what-if`, performs both deployments, runs bootstrap, and retains only sanitized shared evidence.
-- **Validated only after owner-run deployment:** actual Resource Group, vault, secret metadata, secret values, and Azure RBAC state.
+- **Owner-run result so far:** preflight, the initial infrastructure deployment, and the negative control/data-plane separation check succeeded. The first bootstrap attempt then failed before creating a role assignment or secret because its direct role query combined Azure CLI options that are not compatible.
+- **Planned manual execution:** the repository owner runs the corrected bootstrap, performs the final reader-role deployment, and runs final validation while retaining only sanitized shared evidence.
+- **Validated only after the remaining owner-run steps:** secret metadata and values, temporary-role cleanup, final reader access, inherited-access assumptions, and the complete final Azure RBAC state.
 
-No Azure or Microsoft Entra mutation was executed while preparing this correction. The failed owner-run `what-if` did not deploy resources. The application remains on `InMemoryNoteContentProvider`; Key Vault application integration is deferred to B4-D8.
+No Azure or Microsoft Entra mutation was executed while preparing this repository correction. Separately, the owner-run initial deployment created the intended infrastructure. The failed bootstrap attempt stopped at its first role-assignment query: it created no temporary `Key Vault Secrets Officer` assignment and no secrets. The corrected bootstrap has not yet completed successfully. The application remains on `InMemoryNoteContentProvider`; Key Vault application integration is deferred to B4-D8.
 
 ## Tool responsibilities
 
@@ -18,7 +18,7 @@ No Azure or Microsoft Entra mutation was executed while preparing this correctio
 
 ## Prerequisites
 
-The locally validated baseline is Azure CLI 2.85.0, Bicep CLI 0.45.15, and PowerShell 7.6.4. Use those versions or compatible later versions that provide `az bicep build`, `az bicep build-params`, subscription deployments, `az ad signed-in-user show`, and role-assignment listing with `--all`, `--include-inherited`, and `--fill-principal-name false`.
+The locally validated baseline is Azure CLI 2.85.0, Bicep CLI 0.45.15, and PowerShell 7.6.4. Use those versions or compatible later versions that provide `az bicep build`, `az bicep build-params`, subscription deployments, `az ad signed-in-user show`, and role-assignment listing with scoped, inherited, group-expansion, and principal-name-filling controls.
 
 The signed-in operator needs:
 
@@ -124,12 +124,12 @@ Each secret is enabled, has one initial version, uses `text/plain; purpose=synth
 
 A direct assignment has a scope exactly equal to the individual vault. An inherited effective assignment originates at the Resource Group, subscription, or another parent scope. The workflows do not treat these as interchangeable:
 
-- bootstrap and cleanup enumerate all direct vault assignments, disable principal-name filling, and filter the exact vault scope locally;
+- bootstrap and cleanup query `--scope <vault-scope>` without `--all` or `--include-inherited`, disable principal- and role-name filling, and filter the exact vault scope locally;
 - final validation requires exactly one direct `Key Vault Secrets User` assignment for the current development user;
 - final validation requires no direct `Key Vault Secrets Officer` and no direct application or Managed Identity assignment at the vault; and
-- final validation separately queries inherited assignments effective for the current development user and its transitive groups, then rejects any inherited role containing Key Vault data actions.
+- final validation separately queries `--scope <vault-scope>` with `--assignee-object-id`, `--include-groups`, and `--include-inherited`, but without `--all`, then rejects any inherited role effective for the current development user or its transitive groups that contains Key Vault data actions.
 
-The direct vault inspection remains global so a milestone-created Officer or application-identity assignment cannot be missed. The inherited inspection is principal-specific: unrelated assignments inherited by other users, groups, or workloads do not represent effective access for the development user and are excluded. An inherited Key Vault data-plane role effective for the user or its transitive groups is an unsupported precondition because a successful read would no longer prove the intended vault-scoped reader assignment. Remove or narrow that inherited access through an independently reviewed administrative change before rerunning validation.
+Azure CLI rejects the combination of `az role assignment list --all --scope <vault-scope>`; the owner-run failure exposed this compatibility issue rather than an Azure RBAC permission failure. The direct vault inspection remains global across principals so a milestone-created Officer or application-identity assignment cannot be missed. The inherited inspection is principal-specific: unrelated assignments inherited by other users, groups, or workloads do not represent effective access for the development user and are excluded. An inherited Key Vault data-plane role effective for the user or its transitive groups is an unsupported precondition because a successful read would no longer prove the intended vault-scoped reader assignment. Remove or narrow that inherited access through an independently reviewed administrative change before rerunning validation.
 
 ## Security and failure behavior
 
@@ -141,7 +141,7 @@ Temporary Officer propagation, final reader propagation, and cleanup validation 
 
 The temporary Officer cleanup is attempted in `finally` using an assignment resource ID known before creation. Cleanup is best effort because Azure can be unavailable; it is not guaranteed. The bootstrap script still exits non-zero unless a complete direct vault-scope query proves the Officer assignment is absent.
 
-Scripts 01 and 02 intentionally leave Azure CLI errors visible in the owner's private local terminal so deployment diagnostics remain actionable. The other validation and bootstrap scripts continue suppressing raw Azure errors and emit only coarse markers. Shared evidence for every workflow must contain only sanitized conclusions, change/resource types where already designed, and coarse markers.
+Scripts 01 and 02 intentionally leave Azure CLI errors visible in the owner's private local terminal so deployment diagnostics remain actionable. Scripts 04 and 05 continue suppressing raw Azure errors and now preserve only script-generated sanitized reasons before their coarse failure markers, such as `bootstrap-failure-reason:role-assignment-query-failed` or `development-key-vault-failure-reason:vault-role-state-invalid`. Shared evidence for every workflow must contain only sanitized conclusions, change/resource types where already designed, and coarse markers.
 
 For safe manual investigation, use the Azure portal or Azure CLI only in a private local session. Privately verify the active subscription before tenant-bound `az ad` commands; keep the captured subscription explicit on subscription- and resource-bound commands, disable principal-name filling, and use narrow queries. Inspect raw `what-if` or deployment errors only in that private terminal. Record only a coarse conclusion such as parameter source invalid, subscription mismatch, permission missing, propagation pending, vault non-empty, direct role invalid, or inherited data-plane permission present. Never paste raw errors, command arguments containing local values, IDs, URLs, principal data, physical names, screenshots, or role-assignment objects into Issues, pull requests, chat, or documentation.
 

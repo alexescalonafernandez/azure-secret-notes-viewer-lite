@@ -39,6 +39,7 @@ $temporaryRoleAssignmentId = $null
 $temporaryRoleCreationAttempted = $false
 $bootstrapSucceeded = $false
 $cleanupSucceeded = $true
+$bootstrapFailureReason = $null
 
 function ConvertFrom-SanitizedJson {
     param(
@@ -62,9 +63,9 @@ function Get-DirectVaultRoleAssignments {
 
     $jsonLines = @(
         & az role assignment list `
-            --all `
             --scope $VaultScope `
             --fill-principal-name false `
+            --fill-role-definition-name false `
             --query '[].{roleDefinitionId:roleDefinitionId,principalId:principalId,principalType:principalType,scope:scope}' `
             --subscription $script:subscriptionId `
             --output json `
@@ -329,6 +330,7 @@ try {
 }
 catch {
     $bootstrapSucceeded = $false
+    $bootstrapFailureReason = $_.Exception.Message
 }
 finally {
     if ($temporaryRoleCreationAttempted) {
@@ -372,6 +374,10 @@ finally {
 }
 
 if (-not $bootstrapSucceeded -or -not $cleanupSucceeded) {
+    if (-not [string]::IsNullOrWhiteSpace($bootstrapFailureReason)) {
+        Write-Output "bootstrap-failure-reason:$bootstrapFailureReason"
+    }
+
     Write-Output 'bootstrap-failed'
     exit 1
 }

@@ -35,6 +35,7 @@ $publicLogicalNoteIds = @(
     'demo-integration-note'
     'demo-recovery-note'
 )
+$validationFailureReason = $null
 
 function ConvertFrom-SanitizedJson {
     param(
@@ -77,7 +78,6 @@ function Get-VaultRoleAssignments {
 
     $arguments = @(
         'role', 'assignment', 'list',
-        '--all',
         '--scope', $VaultScope,
         '--fill-principal-name', 'false',
         '--fill-role-definition-name', 'false',
@@ -402,6 +402,12 @@ try {
     Write-Output 'development-key-vault-valid'
 }
 catch {
+    $validationFailureReason = $_.Exception.Message
+
+    if (-not [string]::IsNullOrWhiteSpace($validationFailureReason)) {
+        Write-Output "development-key-vault-failure-reason:$validationFailureReason"
+    }
+
     Write-Output 'development-key-vault-validation-failed'
     exit 1
 }
