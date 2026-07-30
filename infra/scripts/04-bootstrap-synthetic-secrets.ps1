@@ -51,7 +51,7 @@ function ConvertFrom-SanitizedJson {
     )
 
     try {
-        return $Json | ConvertFrom-Json
+        return $Json | ConvertFrom-Json -DateKind String
     }
     catch {
         throw 'azure-response-invalid'
