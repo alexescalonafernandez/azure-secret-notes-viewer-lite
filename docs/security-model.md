@@ -3,7 +3,7 @@
 ## Protected assets
 
 - The implemented `/Notes` application authorization boundary and fixed synthetic catalog.
-- Synthetic demonstration secret values stored in the B4-D7 development Key Vault; application retrieval remains deferred to B4-D8.
+- Synthetic demonstration secret values stored in the B4-D7 development Key Vault and optionally retrieved through the B4-D8 local provider.
 - The closed catalog of approved logical note identifiers used by the application.
 - Microsoft Entra ID application registration and app-role assignments.
 - App Service system-assigned Managed Identity.
@@ -19,7 +19,7 @@ Only synthetic demonstration secrets may be used later. Tenant IDs and applicati
 - **Authenticated user with unrelated app role:** Has a valid single-tenant Entra ID session, but an unrelated role does not authorize `/Notes`.
 - **User with `SecretNotes.Reader`:** Has a valid single-tenant Entra ID session and the application role required for `/Notes`.
 - **App Service Managed Identity:** The system-assigned workload identity used by the deployed application to access Key Vault.
-- **Local developer identity:** Used for local development and manual validation; must not be assumed to represent production workload permissions.
+- **Local developer identity:** Used through `AzureCliCredential` for explicit local Key Vault mode and owner-run validation; it must not be assumed to represent production workload permissions.
 - **Future CI/CD identity:** Deferred identity for deployment automation, potentially GitHub Actions OIDC in a later milestone.
 - **Synthetic integration-test principal:** A non-identifying test-only principal used to exercise authorization branches without changing a real Entra user or assignment.
 
@@ -87,7 +87,7 @@ The production application contains no test scheme, test-header handling, authen
 
 ## System-assigned Managed Identity
 
-A future deployed App Service will use a system-assigned Managed Identity as its workload identity. The identity lifecycle is tied to the App Service, reducing the need to manage a separate credential. The application will use `SecretClient` with `DefaultAzureCredential`; in Azure, the credential chain is expected to resolve to the App Service Managed Identity. This application integration is not implemented in B4-D7.
+A future deployed App Service will use a system-assigned Managed Identity as its workload identity. The identity lifecycle is tied to the App Service, reducing the need to manage a separate credential. Its exact deployed credential composition remains deferred. B4-D8 uses only `AzureCliCredential` for deterministic local access with the B4-D7 development identity.
 
 ## Key Vault Azure RBAC
 
@@ -107,7 +107,7 @@ Secret-version validation requests JSON without a CLI-side JMESPath count and co
 
 Direct role assignments are not interchangeable with inherited effective permissions. Direct validation queries the vault scope without `--all` or `--include-inherited`, disables principal- and role-name filling, and filters exact scope locally. This global-across-principals view detects any direct Officer or application-identity assignment introduced at the vault. Effective inherited validation uses the vault scope, the current user's object ID, transitive-group expansion, and inherited-assignment inclusion, also without `--all`. An effective inherited role with Key Vault data actions invalidates the development least-privilege assumptions and causes sanitized failure as an unsupported precondition. Unrelated inherited assignments for other principals are excluded because they are not effective permissions of the development user.
 
-This human reader assignment is a local-development exception and is unrelated to `SecretNotes.Reader`. B4-D7 creates no application or Managed Identity assignment. The future App Service Managed Identity remains the expected application caller and will require a separate least-privilege decision in B4-D8 or a later milestone.
+This human reader assignment is a local-development exception and is unrelated to `SecretNotes.Reader`. B4-D8 local Key Vault mode deliberately uses that same Azure CLI identity. B4-D7 creates no application or Managed Identity assignment. The future App Service Managed Identity remains the expected deployed application caller and requires a separate least-privilege decision in a later milestone.
 
 The vault keeps public network access enabled so the repository owner can validate it locally. This is a documented development exception. Purge protection and seven-day soft-delete retention reduce accidental irreversible loss but also prevent immediate purge during teardown.
 
@@ -131,7 +131,7 @@ The matrix distinguishes the current implemented application authorization state
 | Authenticated user with unrelated app role | Yes | No; denied | No | None | Implemented and covered by authorization tests; unrelated roles grant no access. |
 | User with `SecretNotes.Reader` | Yes | Yes; fixed synthetic catalog only | No | None through this app role | Implemented; the app role permits application feature use only. |
 | App Service Managed Identity | No human session | Not applicable | Future: yes | Deferred `Key Vault Secrets User` | Future workload identity used by `SecretClient`. |
-| Local developer identity | Yes when local authentication is configured | Depends on assigned app role | Owner-run deployment, bootstrap, recovery, and validation only | Final direct `Key Vault Secrets User` at vault scope; temporary Officer removed | B4-D7 deployment and sanitized final validation completed successfully. |
+| Local developer identity | Yes when local authentication is configured | Depends on assigned app role | Yes only in explicitly selected local Key Vault mode through `AzureCliCredential` | Final direct `Key Vault Secrets User` at vault scope; temporary Officer removed | B4-D7 validation completed; B4-D8 interactive application validation is pending. |
 | Future CI/CD identity | No | Not applicable | No for runtime reads | Deployment permissions only, deferred | GitHub Actions OIDC is deferred. |
 
 ## Secure error-handling expectations
@@ -203,11 +203,18 @@ Completed owner-run validation for B4-D7:
 - No unsupported inherited Key Vault data-plane permission is effective for the user or its transitive groups.
 - Evidence contains only sanitized markers, with no raw Azure errors, identifiers, URLs, principal data, or role objects.
 
-Still deferred to B4-D8 or later:
+Automated for B4-D8 without Azure access:
 
-- Managed Identity without Key Vault RBAC receives a safe application failure with no secret disclosure.
-- Missing Key Vault secret and dependency failures receive safe application failures.
-- The Key Vault provider never exposes physical names, values, or raw Azure errors.
+- Closed logical-to-physical mapping and resistance to unknown `NoteId` values.
+- Active-version-only retrieval with cancellation propagation.
+- Missing values, request failures, and authentication failures become a fixed exception with no raw Azure message, physical name, vault URI, or inner exception.
+- Startup rejects unsupported providers, unsafe vault URIs, incomplete or duplicate names, and names equal to public logical IDs.
+- Key Vault mode has no in-memory fallback and uses one reusable `SecretClient`.
+
+Still deferred or pending:
+
+- Owner-run B4-D8 local Key Vault application validation.
+- App Service Managed Identity behavior and its Azure RBAC validation.
 
 Continuing security scenarios:
 
