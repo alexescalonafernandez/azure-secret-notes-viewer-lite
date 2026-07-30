@@ -266,14 +266,16 @@ try {
 
     foreach ($fixture in $fixtures) {
         $listedSecret = @(
-            $listedSecrets | Where-Object { $_.name -ceq $fixture.Name }
+            $listedSecrets | Where-Object {
+                [string]::Equals(
+                    $_.name,
+                    $fixture.Name,
+                    [StringComparison]::OrdinalIgnoreCase
+                )
+            }
         )
-        if (
-            $listedSecret.Count -ne 1 -or
-            $listedSecret[0].enabled -ne $true -or
-            [string]::IsNullOrWhiteSpace($listedSecret[0].expires)
-        ) {
-            throw 'synthetic-secret-metadata-invalid'
+        if ($listedSecret.Count -ne 1) {
+            throw 'synthetic-secret-name-set-invalid'
         }
 
         $secretJsonLines = @(
@@ -290,24 +292,60 @@ try {
         }
         $secretJson = $secretJsonLines -join [Environment]::NewLine
         $secret = ConvertFrom-SanitizedJson -Json $secretJson
-        $createdUtc = [DateTimeOffset]::Parse(
-            $secret.created,
-            [Globalization.CultureInfo]::InvariantCulture,
-            [Globalization.DateTimeStyles]::AssumeUniversal
-        ).ToUniversalTime()
-        $expiresUtc = [DateTimeOffset]::Parse(
-            $secret.expires,
-            [Globalization.CultureInfo]::InvariantCulture,
-            [Globalization.DateTimeStyles]::AssumeUniversal
-        ).ToUniversalTime()
 
         if (
-            $secret.value -cne $fixture.Value -or
-            $secret.enabled -ne $true -or
-            $secret.contentType -cne $syntheticContentType -or
-            [Math]::Abs((($expiresUtc - $createdUtc).TotalDays) - 90) -gt 0.001
+            $null -eq $secret -or
+            $null -eq $secret.PSObject.Properties['value'] -or
+            $secret.value -cne $fixture.Value
         ) {
-            throw 'synthetic-secret-validation-failed'
+            throw 'synthetic-secret-value-invalid'
+        }
+        if (
+            $null -eq $secret.PSObject.Properties['enabled'] -or
+            $secret.enabled -ne $true
+        ) {
+            throw 'synthetic-secret-enabled-invalid'
+        }
+        if (
+            $null -eq $secret.PSObject.Properties['contentType'] -or
+            $secret.contentType -cne $syntheticContentType
+        ) {
+            throw 'synthetic-secret-content-type-invalid'
+        }
+
+        $createdUtc = [DateTimeOffset]::MinValue
+        if (
+            $null -eq $secret.PSObject.Properties['created'] -or
+            [string]::IsNullOrWhiteSpace([string] $secret.created) -or
+            -not [DateTimeOffset]::TryParse(
+                [string] $secret.created,
+                [Globalization.CultureInfo]::InvariantCulture,
+                [Globalization.DateTimeStyles]::AssumeUniversal,
+                [ref] $createdUtc
+            )
+        ) {
+            throw 'synthetic-secret-created-invalid'
+        }
+
+        $expiresUtc = [DateTimeOffset]::MinValue
+        if (
+            $null -eq $secret.PSObject.Properties['expires'] -or
+            [string]::IsNullOrWhiteSpace([string] $secret.expires) -or
+            -not [DateTimeOffset]::TryParse(
+                [string] $secret.expires,
+                [Globalization.CultureInfo]::InvariantCulture,
+                [Globalization.DateTimeStyles]::AssumeUniversal,
+                [ref] $expiresUtc
+            )
+        ) {
+            throw 'synthetic-secret-expiration-invalid'
+        }
+
+        $lifetimeDays = (
+            $expiresUtc.ToUniversalTime() - $createdUtc.ToUniversalTime()
+        ).TotalDays
+        if ([Math]::Abs($lifetimeDays - 90) -gt 0.001) {
+            throw 'synthetic-secret-expiration-invalid'
         }
 
         $versionCount = (
@@ -322,8 +360,10 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw 'synthetic-secret-version-query-failed'
         }
-        $versionCount = $versionCount.Trim()
-        if ($versionCount -ne '1') {
+        if (
+            [string]::IsNullOrWhiteSpace([string] $versionCount) -or
+            ([string] $versionCount).Trim() -ne '1'
+        ) {
             throw 'synthetic-secret-version-validation-failed'
         }
     }
@@ -403,6 +443,9 @@ try {
 }
 catch {
     $validationFailureReason = $_.Exception.Message
+    if ($validationFailureReason -notmatch '^[a-z0-9-]+$') {
+        $validationFailureReason = 'validation-operation-failed'
+    }
 
     if (-not [string]::IsNullOrWhiteSpace($validationFailureReason)) {
         Write-Output "development-key-vault-failure-reason:$validationFailureReason"

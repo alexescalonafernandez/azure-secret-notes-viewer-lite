@@ -15,6 +15,8 @@ param(
     [Parameter(Mandatory)]
     [string] $RecoverySecretName,
 
+    [switch] $ResumeExistingSecrets,
+
     [ValidateRange(1, 60)]
     [int] $PropagationMaxAttempts = 12,
 
@@ -40,6 +42,7 @@ $temporaryRoleCreationAttempted = $false
 $bootstrapSucceeded = $false
 $cleanupSucceeded = $true
 $bootstrapFailureReason = $null
+$cleanupFailureReason = $null
 
 function ConvertFrom-SanitizedJson {
     param(
@@ -100,6 +103,105 @@ function Assert-PrivateInput {
         $script:publicLogicalNoteIds -icontains $Value
     ) {
         throw 'private-input-invalid'
+    }
+}
+
+function Assert-SyntheticSecretFixture {
+    param(
+        [Parameter(Mandatory)]
+        [string] $VaultName,
+
+        [Parameter(Mandatory)]
+        [psobject] $Fixture
+    )
+
+    $secretJsonLines = @(
+        & az keyvault secret show `
+            --vault-name $VaultName `
+            --name $Fixture.Name `
+            --query '{value:value,enabled:attributes.enabled,created:attributes.created,expires:attributes.expires,contentType:contentType}' `
+            --subscription $script:subscriptionId `
+            --output json `
+            --only-show-errors 2>$null
+    )
+    if ($LASTEXITCODE -ne 0) {
+        throw 'synthetic-secret-read-failed'
+    }
+    $secretJson = $secretJsonLines -join [Environment]::NewLine
+    $secret = ConvertFrom-SanitizedJson -Json $secretJson
+
+    if (
+        $null -eq $secret -or
+        $null -eq $secret.PSObject.Properties['value'] -or
+        $secret.value -cne $Fixture.Value
+    ) {
+        throw 'synthetic-secret-value-invalid'
+    }
+    if (
+        $null -eq $secret.PSObject.Properties['enabled'] -or
+        $secret.enabled -ne $true
+    ) {
+        throw 'synthetic-secret-enabled-invalid'
+    }
+    if (
+        $null -eq $secret.PSObject.Properties['contentType'] -or
+        $secret.contentType -cne $script:syntheticContentType
+    ) {
+        throw 'synthetic-secret-content-type-invalid'
+    }
+
+    $createdUtc = [DateTimeOffset]::MinValue
+    if (
+        $null -eq $secret.PSObject.Properties['created'] -or
+        [string]::IsNullOrWhiteSpace([string] $secret.created) -or
+        -not [DateTimeOffset]::TryParse(
+            [string] $secret.created,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::AssumeUniversal,
+            [ref] $createdUtc
+        )
+    ) {
+        throw 'synthetic-secret-created-invalid'
+    }
+
+    $expiresUtc = [DateTimeOffset]::MinValue
+    if (
+        $null -eq $secret.PSObject.Properties['expires'] -or
+        [string]::IsNullOrWhiteSpace([string] $secret.expires) -or
+        -not [DateTimeOffset]::TryParse(
+            [string] $secret.expires,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::AssumeUniversal,
+            [ref] $expiresUtc
+        )
+    ) {
+        throw 'synthetic-secret-expiration-invalid'
+    }
+
+    $lifetimeDays = (
+        $expiresUtc.ToUniversalTime() - $createdUtc.ToUniversalTime()
+    ).TotalDays
+    if ([Math]::Abs($lifetimeDays - 90) -gt 0.001) {
+        throw 'synthetic-secret-expiration-invalid'
+    }
+
+    $versionCountText = (
+        & az keyvault secret list-versions `
+            --vault-name $VaultName `
+            --name $Fixture.Name `
+            --query 'length(@)' `
+            --subscription $script:subscriptionId `
+            --output tsv `
+            --only-show-errors 2>$null
+    )
+    if ($LASTEXITCODE -ne 0) {
+        throw 'synthetic-secret-version-query-failed'
+    }
+    if (
+        [string]::IsNullOrWhiteSpace([string] $versionCountText) -or
+        ([string] $versionCountText).Trim() -ne '1'
+    ) {
+        throw 'synthetic-secret-version-validation-failed'
     }
 }
 
@@ -250,79 +352,59 @@ try {
     }
     $existingSecretNamesJson = $existingSecretNamesJsonLines -join [Environment]::NewLine
     $existingSecretNames = @(ConvertFrom-SanitizedJson -Json $existingSecretNamesJson)
-    if ($existingSecretNames.Count -ne 0) {
-        throw 'vault-not-empty'
-    }
 
-    $expirationUtc = [DateTimeOffset]::UtcNow.AddDays(90)
-    $expirationArgument = $expirationUtc.ToString(
-        'yyyy-MM-ddTHH:mm:ssZ',
-        [Globalization.CultureInfo]::InvariantCulture
-    )
-
-    foreach ($fixture in $fixtures) {
-        $null = & az keyvault secret set `
-            --vault-name $VaultName `
-            --name $fixture.Name `
-            --value $fixture.Value `
-            --content-type $syntheticContentType `
-            --expires $expirationArgument `
-            --disabled false `
-            --subscription $subscriptionId `
-            --output none `
-            --only-show-errors 2>$null
-        if ($LASTEXITCODE -ne 0) {
-            throw 'synthetic-secret-creation-failed'
+    if ($ResumeExistingSecrets) {
+        if ($existingSecretNames.Count -ne 3) {
+            throw 'recovery-secret-count-invalid'
         }
-    }
-    Write-Output 'synthetic-secrets-created'
 
-    foreach ($fixture in $fixtures) {
-        $secretJsonLines = @(
-            & az keyvault secret show `
+        $existingSecretNameSet = [System.Collections.Generic.HashSet[string]]::new(
+            [StringComparer]::OrdinalIgnoreCase
+        )
+        foreach ($existingSecretName in $existingSecretNames) {
+            if (
+                [string]::IsNullOrWhiteSpace([string] $existingSecretName) -or
+                -not $existingSecretNameSet.Add([string] $existingSecretName)
+            ) {
+                throw 'recovery-secret-name-set-invalid'
+            }
+        }
+        if (-not $existingSecretNameSet.SetEquals($uniqueSecretNames)) {
+            throw 'recovery-secret-name-set-invalid'
+        }
+
+        Write-Output 'synthetic-secrets-resume-state-valid'
+    }
+    else {
+        if ($existingSecretNames.Count -ne 0) {
+            throw 'vault-not-empty'
+        }
+
+        $expirationArgument = [DateTimeOffset]::UtcNow.AddDays(90).ToString(
+            'yyyy-MM-ddTHH:mm:ssZ',
+            [Globalization.CultureInfo]::InvariantCulture
+        )
+
+        foreach ($fixture in $fixtures) {
+            $null = & az keyvault secret set `
                 --vault-name $VaultName `
                 --name $fixture.Name `
-                --query '{value:value,enabled:attributes.enabled,expires:attributes.expires,contentType:contentType}' `
+                --value $fixture.Value `
+                --content-type $syntheticContentType `
+                --expires $expirationArgument `
+                --disabled false `
                 --subscription $subscriptionId `
-                --output json `
+                --output none `
                 --only-show-errors 2>$null
-        )
-        if ($LASTEXITCODE -ne 0) {
-            throw 'synthetic-secret-read-failed'
+            if ($LASTEXITCODE -ne 0) {
+                throw 'synthetic-secret-creation-failed'
+            }
         }
-        $secretJson = $secretJsonLines -join [Environment]::NewLine
-        $secret = ConvertFrom-SanitizedJson -Json $secretJson
-        $actualExpiration = [DateTimeOffset]::Parse(
-            $secret.expires,
-            [Globalization.CultureInfo]::InvariantCulture,
-            [Globalization.DateTimeStyles]::AssumeUniversal
-        ).ToUniversalTime()
+        Write-Output 'synthetic-secrets-created'
+    }
 
-        if (
-            $secret.value -cne $fixture.Value -or
-            $secret.enabled -ne $true -or
-            $secret.contentType -cne $syntheticContentType -or
-            [Math]::Abs(($actualExpiration - $expirationUtc).TotalSeconds) -gt 2
-        ) {
-            throw 'synthetic-secret-validation-failed'
-        }
-
-        $versionCountText = (
-            & az keyvault secret list-versions `
-                --vault-name $VaultName `
-                --name $fixture.Name `
-                --query 'length(@)' `
-                --subscription $subscriptionId `
-                --output tsv `
-                --only-show-errors 2>$null
-        )
-        if ($LASTEXITCODE -ne 0) {
-            throw 'synthetic-secret-version-query-failed'
-        }
-        $versionCountText = $versionCountText.Trim()
-        if ($versionCountText -ne '1') {
-            throw 'synthetic-secret-version-validation-failed'
-        }
+    foreach ($fixture in $fixtures) {
+        Assert-SyntheticSecretFixture -VaultName $VaultName -Fixture $fixture
     }
     Write-Output 'synthetic-secrets-validated'
 
@@ -331,6 +413,9 @@ try {
 catch {
     $bootstrapSucceeded = $false
     $bootstrapFailureReason = $_.Exception.Message
+    if ($bootstrapFailureReason -notmatch '^[a-z0-9-]+$') {
+        $bootstrapFailureReason = 'bootstrap-operation-failed'
+    }
 }
 finally {
     if ($temporaryRoleCreationAttempted) {
@@ -355,11 +440,17 @@ finally {
                 )
                 if ($remainingAssignments.Count -eq 0) {
                     $cleanupSucceeded = $true
+                    $cleanupFailureReason = $null
                     break
                 }
+                $cleanupFailureReason = 'temporary-officer-cleanup-unverified'
             }
             catch {
                 $cleanupSucceeded = $false
+                $cleanupFailureReason = $_.Exception.Message
+                if ($cleanupFailureReason -notmatch '^[a-z0-9-]+$') {
+                    $cleanupFailureReason = 'temporary-officer-cleanup-unverified'
+                }
             }
 
             if ($attempt -lt $PropagationMaxAttempts) {
@@ -370,12 +461,22 @@ finally {
         if ($cleanupSucceeded) {
             Write-Output 'temporary-officer-removed'
         }
+        elseif ([string]::IsNullOrWhiteSpace($cleanupFailureReason)) {
+            $cleanupFailureReason = 'temporary-officer-cleanup-unverified'
+        }
     }
 }
 
 if (-not $bootstrapSucceeded -or -not $cleanupSucceeded) {
     if (-not [string]::IsNullOrWhiteSpace($bootstrapFailureReason)) {
         Write-Output "bootstrap-failure-reason:$bootstrapFailureReason"
+    }
+
+    if (
+        -not $cleanupSucceeded -and
+        -not [string]::IsNullOrWhiteSpace($cleanupFailureReason)
+    ) {
+        Write-Output "bootstrap-cleanup-failure-reason:$cleanupFailureReason"
     }
 
     Write-Output 'bootstrap-failed'

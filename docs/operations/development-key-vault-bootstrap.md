@@ -3,11 +3,11 @@
 ## Status boundary
 
 - **Implemented in repository:** subscription-scope Bicep and six focused PowerShell workflow scripts.
-- **Owner-run result so far:** preflight, the initial infrastructure deployment, and the negative control/data-plane separation check succeeded. The first bootstrap attempt then failed before creating a role assignment or secret because its direct role query combined Azure CLI options that are not compatible.
-- **Planned manual execution:** the repository owner runs the corrected bootstrap, performs the final reader-role deployment, and runs final validation while retaining only sanitized shared evidence.
-- **Validated only after the remaining owner-run steps:** secret metadata and values, temporary-role cleanup, final reader access, inherited-access assumptions, and the complete final Azure RBAC state.
+- **Owner-run result so far:** preflight, the initial infrastructure deployment, and the negative control/data-plane separation check succeeded. A corrected bootstrap created all three secrets, then failed during secret validation; its `finally` cleanup removed the temporary Officer assignment. A normal retry was safely rejected because the vault was non-empty.
+- **Planned manual execution:** the repository owner runs the explicit read-only recovery path, performs the final reader-role deployment, and runs final validation while retaining only sanitized shared evidence.
+- **Validated only after the remaining owner-run steps:** persisted secret values and metadata, one-version state, final reader access, inherited-access assumptions, and the complete final Azure RBAC state.
 
-No Azure or Microsoft Entra mutation was executed while preparing this repository correction. Separately, the owner-run initial deployment created the intended infrastructure. The failed bootstrap attempt stopped at its first role-assignment query: it created no temporary `Key Vault Secrets Officer` assignment and no secrets. The corrected bootstrap has not yet completed successfully. The application remains on `InMemoryNoteContentProvider`; Key Vault application integration is deferred to B4-D8.
+No Azure or Microsoft Entra mutation was executed while preparing this repository correction. Separately, the owner-run bootstrap created the intended three active secrets before validation failed, and the temporary `Key Vault Secrets Officer` assignment was removed. The final reader assignment has not been deployed, final validation has not run, and the corrected recovery path has not yet completed successfully. The application remains on `InMemoryNoteContentProvider`; Key Vault application integration is deferred to B4-D8.
 
 ## Tool responsibilities
 
@@ -53,7 +53,7 @@ Run each step selectively from the repository root in a PowerShell terminal. Sto
 4. Run `infra/scripts/01-what-if-development-key-vault.ps1` and review the sanitized change and resource types. Investigate any Azure CLI diagnostics only in the private terminal.
 5. Run `infra/scripts/02-deploy-development-key-vault.ps1`.
 6. Run `infra/scripts/03-validate-control-data-plane-separation.ps1` with the local vault name. Its only successful output is `data-plane-denied-before-assignment`.
-7. Run `infra/scripts/04-bootstrap-synthetic-secrets.ps1` with the local Resource Group name, vault name, and three private physical secret names.
+7. For a new empty vault, run `infra/scripts/04-bootstrap-synthetic-secrets.ps1` with the local Resource Group name, vault name, and three private physical secret names. Do not pass `-ResumeExistingSecrets`.
 8. Change only `assignDevelopmentReaderRole` to `true` in the ignored parameter file.
 9. Run the `what-if` workflow again, review it, and run the deployment workflow.
 10. Run `infra/scripts/05-validate-development-key-vault.ps1` with the same local resource and physical secret names.
@@ -80,6 +80,18 @@ $recoverySecretName = '<set-private-recovery-secret-name>'
     -OperationsSecretName $operationsSecretName `
     -IntegrationSecretName $integrationSecretName `
     -RecoverySecretName $recoverySecretName `
+    -PropagationMaxAttempts 12 `
+    -PropagationDelaySeconds 10
+
+# Use only for the documented partial-bootstrap state after privately
+# confirming that the three supplied names are the intended fixtures.
+& ./infra/scripts/04-bootstrap-synthetic-secrets.ps1 `
+    -ResourceGroupName $resourceGroupName `
+    -VaultName $vaultName `
+    -OperationsSecretName $operationsSecretName `
+    -IntegrationSecretName $integrationSecretName `
+    -RecoverySecretName $recoverySecretName `
+    -ResumeExistingSecrets `
     -PropagationMaxAttempts 12 `
     -PropagationDelaySeconds 10
 
@@ -118,7 +130,7 @@ Final validation
 → vault configuration, secret state, read access, and RBAC separation verified
 ```
 
-Each secret is enabled, has one initial version, uses `text/plain; purpose=synthetic-demo`, and expires 90 days after creation in UTC. Physical secret names remain local and separate from every public logical `NoteId`. The scripts never create a fourth probe secret.
+Each secret is enabled, has one initial version, uses `text/plain; purpose=synthetic-demo`, and expires approximately 90 days after its persisted creation timestamp in UTC. Validation allows a tolerance of 0.001 days (86.4 seconds) for service and CLI timestamp normalization. Physical secret names remain local and separate from every public logical `NoteId`. The scripts never create a fourth probe secret.
 
 ## Direct and inherited RBAC
 
@@ -135,11 +147,13 @@ Azure CLI rejects the combination of `az role assignment list --all --scope <vau
 
 The Key Vault uses Azure RBAC, purge protection, seven-day soft-delete retention, and Standard SKU in West Europe. Public network access is enabled only as a local-development exception; it is not the production network posture.
 
-Bootstrap refuses a non-empty vault so reruns cannot silently create extra versions. If a partial bootstrap creates one or more secrets and then fails, the next run stops at the non-empty-vault guard. Do not delete, overwrite, or rerun blindly. Privately inspect the vault, confirm which intended names and versions exist, and decide on a separately authorized recovery or teardown action without publishing the findings.
+Normal bootstrap is intentionally non-idempotent: it requires zero active secrets and refuses a non-empty vault so reruns cannot silently create extra versions. `-ResumeExistingSecrets` is an explicit recovery path only for the partial state in which all three creation commands succeeded but later validation failed. Recovery requires exactly three active secrets and a case-insensitive name set exactly equal to the three supplied private names. Missing names, unexpected names, and a fourth active secret cause sanitized failure.
+
+Recovery performs no secret writes: it does not call secret set or set-attributes, and it does not delete, purge, recover, disable, overwrite, or create a version. Normal and recovery modes share the same read-only validation of fixed values, enabled state, content type, persisted creation/expiration relationship, and exactly one version. Deleting or purging secrets is not part of this recovery. For any other partial state, stop and use a separately authorized investigation or teardown decision rather than forcing resume mode.
 
 Temporary Officer propagation, final reader propagation, and cleanup validation use bounded retries. A retry waits only after a failed attempt and stops immediately on success. If propagation times out, confirm the pinned subscription, signed-in user, direct role scope, and absence of inherited data-plane access privately, then wait for Azure RBAC convergence before rerunning the relevant validation step.
 
-The temporary Officer cleanup is attempted in `finally` using an assignment resource ID known before creation. Cleanup is best effort because Azure can be unavailable; it is not guaranteed. The bootstrap script still exits non-zero unless a complete direct vault-scope query proves the Officer assignment is absent.
+The temporary Officer cleanup is attempted in `finally` using an assignment resource ID known before creation, including when recovery-state, field, version, or normal creation validation fails. Cleanup is best effort because Azure can be unavailable; it is not guaranteed. The bootstrap script still exits non-zero unless a complete direct vault-scope query proves the Officer assignment is absent. A cleanup failure has its own `bootstrap-cleanup-failure-reason:<reason>` marker and never replaces an earlier `bootstrap-failure-reason:<reason>`.
 
 Scripts 01 and 02 intentionally leave Azure CLI errors visible in the owner's private local terminal so deployment diagnostics remain actionable. Scripts 04 and 05 continue suppressing raw Azure errors and now preserve only script-generated sanitized reasons before their coarse failure markers, such as `bootstrap-failure-reason:role-assignment-query-failed` or `development-key-vault-failure-reason:vault-role-state-invalid`. Shared evidence for every workflow must contain only sanitized conclusions, change/resource types where already designed, and coarse markers.
 
