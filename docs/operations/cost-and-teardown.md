@@ -1,74 +1,47 @@
 # Cost and teardown operations
 
-This document remains non-executable. B4-D7 adds a repository definition for one development Resource Group and one Standard Key Vault, but the repository owner has not deployed them at branch-publication time.
+This document is non-executable. The accumulated owner-validated state is one development Resource Group, one Standard Key Vault containing the three synthetic secret fixtures and versions, and the validated development-user reader role. B4-D9 App Service resources remain pending owner deployment.
 
-## Planned Azure resources
+## Current and pending Azure resources
 
-- Development Resource Group and Standard Key Vault: implemented in Bicep; planned manual deployment.
-- Azure App Service Plan for low-cost learning usage.
-- Azure App Service with system-assigned Managed Identity.
-- Application Insights connected to a Log Analytics workspace, with implementation deferred to a later milestone.
-- Microsoft Entra ID application registration, service principal, and app role created through manual documented bootstrap.
+- Development Resource Group: deployed.
+- Standard Key Vault: deployed, purge protected, and validated.
+- Development-user vault-scoped `Key Vault Secrets User`: deployed and validated.
+- Linux App Service Plan F1 and empty Linux Web App: repository implementation present; owner deployment and Azure validation pending.
+- Web App system-assigned Managed Identity: created only when the pending Web App deployment occurs; B4-D9 assigns it no role.
+- Application Insights and Log Analytics: not introduced and deferred.
 
 ## Expected sources of cost
 
-- App Service Plan compute charges while allocated.
-- Application Insights and connected Log Analytics workspace ingestion, sampling, and retention when implemented later.
-- Standard Key Vault operations and retained secret versions after owner deployment.
-- Incidental costs from diagnostic settings or retained logs.
+The F1 plan has no fixed plan charge for this learning scenario, subject to Azure Free tier quotas, availability, and service limits. It is a learning-only tier with no production recommendation or production availability claim. Related services, usage beyond free limits, a later paid tier, telemetry, networking, or retained data may introduce costs.
+
+The deployed Standard Key Vault can incur operation and retained-version costs. Future Application Insights and Log Analytics usage would introduce ingestion and retention charges, but B4-D9 creates neither service.
 
 ## Rules for keeping costs low
 
-- Use the smallest appropriate App Service Plan for the learning scenario.
-- Deploy only the resources required for the active milestone.
-- Avoid duplicate environments unless explicitly needed.
-- Keep observability moderate and avoid verbose request, dependency, or custom-event logging.
-- Remove resources promptly when validation is complete.
+- Keep `provisionAppServiceHosting = false` until an owner deliberately prepares and reviews the private parameters.
+- Use F1 only for the scoped learning validation; do not represent it as production hosting.
+- Do not publish the application merely to validate the empty hosting foundation.
+- Deploy only resources required by the active milestone.
+- Avoid duplicate environments, paid scaling, slots, telemetry, and networking features unless separately approved.
 - Keep only the three required synthetic secrets and their single initial versions.
-- Do not use production-grade scale, premium tiers, or long retention unless a later decision explicitly requires them.
 
-## Moderate observability and telemetry usage
+## Teardown implications
 
-Telemetry should help validate authentication, authorization, Managed Identity, and Key Vault behavior without collecting secrets or sensitive data. The planned baseline is Application Insights connected to a Log Analytics workspace, implemented in a later milestone. Sampling, retention, log categories, and cost controls should be conservative. Secret values must never appear in Application Insights telemetry, Log Analytics data, custom properties, metrics, events, exceptions, traces, screenshots, or terminal evidence.
+Capture only sanitized evidence before teardown. Remove the Web App before its plan when dismantling only the hosting foundation. Deleting the Web App also deletes its system-assigned identity. B4-D9 creates no assignment for that identity, but any future RBAC assignment introduced by B4-D10 or another milestone must be reviewed and removed as part of teardown so a deleted principal does not leave an orphaned assignment.
 
-## When resources should be removed
+The Key Vault is independent of the App Service lifecycle. Removing the Web App or plan must not remove, recreate, or modify the vault, its three synthetic secret versions, or the development-user reader assignment. The vault remains purge protected with seven-day soft-delete retention. Deleting the Resource Group would delete both hosting and vault resources and leave the vault recoverable until retention completes, so a hosting-only teardown must not delete the Resource Group.
 
-Remove Azure resources when:
+No teardown command or automation is supplied by B4-D9. Resource deletion requires a separately reviewed owner action.
 
-- A milestone demonstration is complete.
-- The environment is no longer actively used.
-- Cost monitoring indicates unexpected spend.
-- Identity or permission experiments create uncertainty about the current state.
-- A teardown validation is required before rebuilding from documentation.
+## Conceptual hosting-only teardown order
 
-## Conceptual teardown order
+1. Capture sanitized validation evidence without names, identifiers, hostnames, principals, or settings.
+2. Review and remove any future direct or inherited RBAC assignment involving the Web App identity.
+3. Delete the Web App, which also removes its system-assigned identity.
+4. Delete the now-unused App Service Plan.
+5. Confirm privately that the development Resource Group, Key Vault, synthetic secrets, and development-user reader assignment remain intact.
 
-1. Capture only non-sensitive validation evidence.
-2. Confirm the temporary `Key Vault Secrets Officer` assignment is absent.
-3. Remove the development user's final vault-scoped `Key Vault Secrets User` assignment when it is no longer needed.
-4. Delete the development Resource Group only after confirming it contains no required resources.
-5. Allow the purge-protected Key Vault to complete its seven-day soft-delete retention period; it cannot be purged early.
-6. For later milestones, remove application RBAC, App Service, plan, telemetry, and Entra objects in dependency order.
+## Full-environment considerations
 
-Deleting the Resource Group does not make the vault name immediately reusable. Purge protection deliberately trades rapid teardown for recovery safety. B4-D7 includes no deletion or purge script, and repository automation must not be treated as authorization to perform teardown.
-
-## Possible orphaned resources or identities
-
-- Microsoft Entra ID application registrations and service principals created manually.
-- App-role assignments on users or groups.
-- Azure RBAC role assignments that were not removed before resource deletion.
-- The soft-deleted, purge-protected Key Vault during its seven-day retention period.
-- Application Insights components, connected Log Analytics workspaces, or diagnostic settings created later.
-
-## Validation after teardown
-
-- Confirm the Resource Group no longer contains active resources.
-- Confirm the App Service endpoint is unavailable.
-- Confirm the Managed Identity can no longer access Key Vault.
-- Confirm there are no unexpected Azure RBAC assignments for deleted principals.
-- Confirm telemetry resources are deleted or retained intentionally with safe retention settings.
-- Confirm no secret values were captured in teardown evidence.
-
-## Manual cleanup of Entra ID objects
-
-Entra ID objects may outlive Azure resource deletion. Manual cleanup should review application registrations, enterprise applications, app roles, app-role assignments, owners, redirect URIs, and any future CI/CD federated credentials. Cleanup evidence must not include tenant IDs, client IDs, tokens, personal data, or other sensitive identifiers.
+Microsoft Entra application registrations, service principals, app-role assignments, future redirect URIs, CI/CD identities, and federated credentials may outlive Azure resource deletion. They require separate owner review. Purge protection deliberately prevents immediate Key Vault purge and name reuse. Never publish resource names, IDs, tenant metadata, principals, tokens, connection strings, or raw teardown diagnostics as evidence.

@@ -2,13 +2,13 @@
 
 ## Logical architecture
 
-Secret Notes Viewer Lite is a small ASP.NET Core Razor Pages application planned for future hosting on Azure App Service. It authenticates users with a single Microsoft Entra ID tenant and authorizes access to `/Notes` with the configured `SecretNotes.Reader` app role. The application owns a closed catalog of logical note identifiers and display names. The target architecture will resolve those logical identifiers to synthetic demonstration note secrets in Azure Key Vault by using the App Service system-assigned Managed Identity.
+Secret Notes Viewer Lite is a small ASP.NET Core Razor Pages application with a repository-defined, owner-gated Azure App Service hosting foundation. It authenticates users with a single Microsoft Entra ID tenant and authorizes access to `/Notes` with the configured `SecretNotes.Reader` app role. The application owns a closed catalog of logical note identifiers and display names. The eventual deployed application will resolve those logical identifiers to synthetic demonstration note secrets in Azure Key Vault by using the App Service system-assigned Managed Identity.
 
 The application user never accesses Azure Key Vault directly. The web application is the policy enforcement point for user authorization. B4-D8 local mode uses the separately authorized Azure CLI development identity as the Key Vault caller; a future deployed application will use a workload identity.
 
 ### Deferred application target state
 
-The complete diagram below remains the deferred deployed target state. B4-D7 infrastructure is owner-validated, and B4-D8 implements the provider adapter, closed mapping, and `SecretClient` composition for local use with `AzureCliCredential`. App Service deployment, its workload credential composition, Managed Identity, application-identity RBAC, telemetry, and CI/CD remain deferred.
+The complete diagram below remains the deferred deployed target state. B4-D7 infrastructure is owner-validated, B4-D8 is merged, and B4-D9 defines an empty App Service host and its identity behind a default-off gate. Owner-run App Service deployment and validation, workload credential composition, application-identity RBAC, application publishing, telemetry, and CI/CD remain deferred.
 
 ```mermaid
 flowchart LR
@@ -126,13 +126,32 @@ Provider selection occurs once during composition and supports only `InMemory` a
 
 Owner-run local validation completed successfully. Explicit `KeyVault` composition started with `AzureCliCredential` using the previously validated development identity, and the closed three-note catalog resolved through the reusable `SecretClient`. Arbitrary query input did not alter membership, order, or secret selection; application authorization and no-store behavior remained intact; and no sensitive rendering or logging was observed. Explicitly selecting `InMemory` again restored Azure-independent operation. This local caller remains the server-side Azure CLI development identity; the future deployed caller remains the deferred App Service system-assigned Managed Identity.
 
+## Repository-defined B4-D9 hosting boundary
+
+B4-D9 adds only the hosting foundation, gated by `provisionAppServiceHosting = false` by default:
+
+```text
+Existing development Resource Group
+├── existing Standard Key Vault and development-user role state (unchanged)
+├── Linux App Service Plan (F1 / Free)
+└── empty Linux Web App
+    ├── DOTNETCORE|10.0
+    ├── HTTPS-only and TLS 1.2 minimum
+    ├── FTP/FTPS and SCM/FTP basic publishing disabled
+    └── system-assigned Managed Identity without Key Vault authorization
+```
+
+The plan module and Web App module share only the existing Resource Group scope and tags. The Web App depends on the plan resource ID; neither hosting module depends on Key Vault, and Key Vault does not depend on hosting. No application package, App Settings, connection strings, Key Vault reference, authentication configuration, telemetry, slot, networking integration, or deployment mechanism is defined.
+
+The stable `Microsoft.Web/serverfarms@2025-03-01`, `Microsoft.Web/sites@2025-03-01`, and `Microsoft.Web/sites/basicPublishingCredentialsPolicies@2025-03-01` schemas represent all required properties. Repository-local validation is complete, while owner-run Azure validation and deployment remain pending.
+
 ## Actors and Azure components
 
 - **User:** A human browser user who may be anonymous, authenticated without the app role, or authenticated with `SecretNotes.Reader`.
 - **Microsoft Entra ID:** The single-tenant identity provider for user authentication and app-role claims.
 - **ASP.NET Core Razor Pages:** The planned web application and user authorization enforcement point.
-- **Azure App Service:** The planned hosting platform for the Razor Pages application.
-- **System-assigned Managed Identity:** The workload identity attached to App Service and used by the application to authenticate to Azure Key Vault.
+- **Azure App Service:** The repository-defined, not-yet-owner-validated hosting platform for the Razor Pages application; B4-D9 creates no application package.
+- **System-assigned Managed Identity:** The identity created with the Web App when the gate is enabled. B4-D9 grants it no Key Vault permission.
 - **Azure Key Vault:** The deployed and validated B4-D7 development secret store; completed B4-D8 owner-run validation proved that explicitly selected local mode can read its closed synthetic note set.
 - **Azure RBAC:** The authorization system used to grant the Managed Identity data-plane access to Key Vault secrets.
 

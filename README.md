@@ -28,11 +28,13 @@ The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages w
 
 ## Current status
 
-`B4-D8 — Local Key Vault Note Provider`
+`B4-D9 — Provision Minimal Linux App Service Hosting Foundation`
 
 The committed application still selects `InMemoryNoteContentProvider`. An explicit `NoteContent:Provider=KeyVault` local override binds and validates one vault URI and exactly three physical names, then registers one reusable `SecretClient` with `AzureCliCredential`. The code-owned mapping accepts only the closed `NoteId` set, performs only active-version `GetSecretAsync` reads, never enumerates secrets, never falls back to in-memory content, and translates Azure request, credential, or unavailable-value failures to a fixed provider-neutral exception.
 
-B4-D7 infrastructure validation is complete. B4-D8 implementation, Azure-free repository validation, and owner-run local Key Vault validation are complete, and the milestone is ready for pull-request review. `InMemory` remains the committed default, while `KeyVault` remains an explicit local override that uses the previously validated Azure CLI development identity. App Service, Managed Identity, deployed application integration, telemetry, and CI/CD remain deferred.
+B4-D7 infrastructure validation and B4-D8 local Key Vault provider validation are complete and merged. B4-D9 now contains the repository implementation for a gated F1 Linux App Service Plan and an empty .NET 10 Linux Web App with a system-assigned Managed Identity. Repository-local validation is complete; owner-run Azure validation is pending, so B4-D9 is not ready for a pull request and no App Service resource is claimed as deployed.
+
+The hosting gate defaults to `false`. `InMemory` remains the committed content-provider default, while `KeyVault` remains an explicit local override that uses the previously validated Azure CLI development identity. The Web App identity is defined but receives no Key Vault role. Application publishing, App Settings, deployed credential composition, telemetry, and CI/CD remain deferred.
 
 ## Application structure
 
@@ -69,14 +71,15 @@ After the application starts, open `https://localhost:7164`. `GET /` displays th
 - [Closed notes catalog and service boundary](docs/operations/closed-notes-catalog.md)
 - [Development Key Vault bootstrap](docs/operations/development-key-vault-bootstrap.md)
 - [Local Key Vault note provider](docs/operations/local-key-vault-provider.md)
+- [App Service hosting foundation](docs/operations/app-service-hosting-foundation.md)
 - [ADR 0001: Security architecture baseline](docs/adr/0001-security-architecture-baseline.md)
 - [ADR 0002: Microsoft Entra ID development identity](docs/adr/0002-entra-development-identity.md)
 - [ADR 0003: Development Key Vault RBAC](docs/adr/0003-development-key-vault-rbac.md)
 
 ## Deferred capabilities
 
-- Managed Identity
-- Application identity Azure RBAC
+- App Service application publishing and configuration
+- Managed Identity Key Vault authorization and deployed credential composition
 - Application Insights
 - CI/CD
 
