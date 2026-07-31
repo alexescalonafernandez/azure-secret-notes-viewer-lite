@@ -122,7 +122,7 @@ The vault keeps public network access enabled so the repository owner can valida
 
 ## Identity and permission matrix
 
-The matrix distinguishes the current implemented application authorization state from the deferred Key Vault and deployment state.
+The matrix distinguishes the current implemented application authorization and optional local Key Vault state from the deferred deployed-workload state.
 
 | Identity | Authenticates to app | May access `/Notes` | Key Vault caller | Expected Key Vault permission | Notes |
 | --- | --- | --- | --- | --- | --- |
@@ -131,7 +131,7 @@ The matrix distinguishes the current implemented application authorization state
 | Authenticated user with unrelated app role | Yes | No; denied | No | None | Implemented and covered by authorization tests; unrelated roles grant no access. |
 | User with `SecretNotes.Reader` | Yes | Yes; fixed synthetic catalog only | No | None through this app role | Implemented; the app role permits application feature use only. |
 | App Service Managed Identity | No human session | Not applicable | Future: yes | Deferred `Key Vault Secrets User` | Future workload identity used by `SecretClient`. |
-| Local developer identity | Yes when local authentication is configured | Depends on assigned app role | Yes only in explicitly selected local Key Vault mode through `AzureCliCredential` | Final direct `Key Vault Secrets User` at vault scope; temporary Officer removed | B4-D7 validation completed; B4-D8 interactive application validation is pending. |
+| Local developer identity | Yes when local authentication is configured | Depends on assigned app role | Yes only in explicitly selected local Key Vault mode through `AzureCliCredential` | Final direct `Key Vault Secrets User` at vault scope; temporary Officer removed | B4-D7 validation and B4-D8 owner-run local application validation completed; this remains a development-only exception. |
 | Future CI/CD identity | No | Not applicable | No for runtime reads | Deployment permissions only, deferred | GitHub Actions OIDC is deferred. |
 
 ## Secure error-handling expectations
@@ -211,9 +211,15 @@ Automated for B4-D8 without Azure access:
 - Startup rejects unsupported providers, unsafe vault URIs, incomplete or duplicate names, and names equal to public logical IDs.
 - Key Vault mode has no in-memory fallback and uses one reusable `SecretClient`.
 
-Still deferred or pending:
+Completed owner-run local validation for B4-D8:
 
-- Owner-run B4-D8 local Key Vault application validation.
+- The Microsoft Entra browser identity and the server-side Azure CLI Key Vault caller remained separate; `SecretNotes.Reader` authorized only the application feature and granted no Key Vault RBAC.
+- Physical secret names remained private User Secrets, and arbitrary request values could not select a secret or alter the closed catalog.
+- Logs contained no secret values or physical names, while rendered output contained no Azure identifiers or raw Azure diagnostics.
+- The Azure CLI developer identity remained a local-development exception, and explicit `InMemory` selection restored operation without Key Vault access.
+
+Still deferred:
+
 - App Service Managed Identity behavior and its Azure RBAC validation.
 
 Continuing security scenarios:

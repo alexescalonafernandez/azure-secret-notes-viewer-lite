@@ -2,7 +2,7 @@
 
 ## Status and boundaries
 
-B4-D8 repository implementation and Azure-free validation are present. Owner-run interactive validation against the existing development Key Vault is pending; do not treat the milestone as complete until the repository owner performs the sequence below.
+B4-D8 repository implementation, Azure-free validation, and owner-run interactive validation against the existing development Key Vault are complete. The milestone is ready for pull-request review but is not merged. The procedure below remains the reusable private validation runbook.
 
 `InMemory` is the committed default. Selecting `KeyVault` is an explicit local override with no fallback. Startup then validates one HTTPS vault URI and exactly three distinct physical secret names. The code-owned mapping is closed:
 
@@ -43,7 +43,7 @@ Do not use a physical name equal, case-insensitively, to any public `demo-*` log
 
 ## Owner-run validation sequence
 
-This is intentionally an owner-run procedure. It must not be automated by Codex.
+This remains an intentionally owner-run procedure and must not be automated by Codex. The repository owner completed it successfully for B4-D8; the unchecked items below preserve a reusable checklist rather than private execution records.
 
 1. Privately confirm that the active Azure CLI identity is the same identity validated in B4-D7. Do not print or publish account metadata.
 2. Set the five User Secrets above with the real private local values.
@@ -74,6 +74,28 @@ This is intentionally an owner-run procedure. It must not be automated by Codex.
    - [ ] No raw Azure diagnostic is published.
 
 5. Stop the application. Record only a sanitized pass/fail conclusion. Do not publish screenshots, HTTP headers containing private data, logs, User Secrets, account metadata, Azure errors, or note values.
+
+## Sanitized validation result
+
+The completed owner-run validation produced only these approved coarse conclusions:
+
+```text
+branch-head-valid
+azure-cli-identity-valid
+user-secrets-configured
+key-vault-mode-started
+public-endpoints-valid
+anonymous-challenge-valid
+authorized-notes-valid
+key-vault-values-valid
+closed-catalog-valid
+no-store-valid
+sensitive-rendering-absent
+sensitive-logging-absent
+in-memory-mode-valid
+```
+
+Private User Secrets, Azure identifiers, resource names, secret values, screenshots, logs, terminal output, and raw diagnostics were intentionally not recorded. After validation, the owner switched only `NoteContent:Provider` back to `InMemory`; the runbook does not claim that the private User Secrets were deleted.
 
 ## Return to the committed default
 

@@ -28,11 +28,11 @@ The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages w
 
 ## Current status
 
-`B4-D8 — Local Key Vault Note Provider (owner validation pending)`
+`B4-D8 — Local Key Vault Note Provider`
 
 The committed application still selects `InMemoryNoteContentProvider`. An explicit `NoteContent:Provider=KeyVault` local override binds and validates one vault URI and exactly three physical names, then registers one reusable `SecretClient` with `AzureCliCredential`. The code-owned mapping accepts only the closed `NoteId` set, performs only active-version `GetSecretAsync` reads, never enumerates secrets, never falls back to in-memory content, and translates Azure request, credential, or unavailable-value failures to a fixed provider-neutral exception.
 
-B4-D7 infrastructure validation is complete. B4-D8 repository-local tests are Azure-free; the repository owner must still run the documented local interactive validation with the same Azure CLI identity validated in B4-D7. App Service, Managed Identity, telemetry, and CI/CD remain deferred.
+B4-D7 infrastructure validation is complete. B4-D8 implementation, Azure-free repository validation, and owner-run local Key Vault validation are complete, and the milestone is ready for pull-request review. `InMemory` remains the committed default, while `KeyVault` remains an explicit local override that uses the previously validated Azure CLI development identity. App Service, Managed Identity, deployed application integration, telemetry, and CI/CD remain deferred.
 
 ## Application structure
 
@@ -75,7 +75,6 @@ After the application starts, open `https://localhost:7164`. `GET /` displays th
 
 ## Deferred capabilities
 
-- Owner-run local Key Vault provider validation
 - Managed Identity
 - Application identity Azure RBAC
 - Application Insights
