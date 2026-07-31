@@ -26,6 +26,27 @@ function Invoke-AzureJson {
     return ConvertFrom-SanitizedJson -Json ($lines -join [Environment]::NewLine)
 }
 
+function Invoke-AzureCount {
+    param([Parameter(Mandatory)][scriptblock] $Command)
+
+    $lines = @(& $Command 2>$null)
+    if ($LASTEXITCODE -ne 0) { throw 'azure-read-failed' }
+    $rawCount = ($lines -join '').Trim()
+    [long] $count = 0
+    if (
+        [string]::IsNullOrWhiteSpace($rawCount) -or
+        -not [long]::TryParse(
+            $rawCount,
+            [Globalization.NumberStyles]::None,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [ref] $count
+        ) -or
+        $count -lt 0
+    ) { throw 'azure-count-invalid' }
+
+    return $count
+}
+
 function Get-CompiledParameterValue {
     param(
         [Parameter(Mandatory)][psobject] $Document,
@@ -156,28 +177,42 @@ $directVaultAssignments = @($vaultAssignments | Where-Object {
 if ($directVaultAssignments.Count -ne 0) { throw 'key-vault-rbac-present' }
 Write-Output 'key-vault-rbac-absent'
 
-$appSettings = Invoke-AzureJson {
-    & az webapp config appsettings list --resource-group $resourceGroupName --name $webAppName --subscription $subscriptionId --query '[].{name:name,value:value}' --output json --only-show-errors
+$appSettingsCount = Invoke-AzureCount {
+    & az webapp config appsettings list --resource-group $resourceGroupName --name $webAppName --subscription $subscriptionId --query 'length(@)' --output tsv --only-show-errors
 }
-$connectionStrings = Invoke-AzureJson {
-    & az webapp config connection-string list --resource-group $resourceGroupName --name $webAppName --subscription $subscriptionId --query '[].{name:name,type:type}' --output json --only-show-errors
+$connectionStringCount = Invoke-AzureCount {
+    & az webapp config connection-string list --resource-group $resourceGroupName --name $webAppName --subscription $subscriptionId --query 'length(@)' --output tsv --only-show-errors
 }
 if (
-    @($appSettings).Count -ne 0 -or
-    @($connectionStrings).Count -ne 0 -or
+    $appSettingsCount -ne 0 -or
+    $connectionStringCount -ne 0 -or
     -not [string]::IsNullOrWhiteSpace([string] $webApp.keyVaultReferenceIdentity)
 ) { throw 'private-settings-present' }
 Write-Output 'private-settings-absent'
 
-$deploymentArtifacts = Invoke-AzureJson {
+$deploymentArtifactCount = Invoke-AzureCount {
     & az resource list `
         --resource-group $resourceGroupName `
         --subscription $subscriptionId `
-        --query "[?starts_with(id, '$($webApp.id)/') && (type == 'Microsoft.Web/sites/deployments' || type == 'Microsoft.Web/sites/sourcecontrols' || type == 'Microsoft.Web/sites/siteextensions')].{type:type}" `
-        --output json `
+        --query "length([?starts_with(id, '$($webApp.id)/') && (type == 'Microsoft.Web/sites/deployments' || type == 'Microsoft.Web/sites/sourcecontrols' || type == 'Microsoft.Web/sites/siteextensions')])" `
+        --output tsv `
         --only-show-errors
 }
-if (@($deploymentArtifacts).Count -ne 0) { throw 'application-package-present' }
+$deploymentRecordCount = Invoke-AzureCount {
+    & az webapp log deployment list `
+        --resource-group $resourceGroupName `
+        --name $webAppName `
+        --subscription $subscriptionId `
+        --query 'length(@)' `
+        --output tsv `
+        --only-show-errors
+}
+if (
+    $deploymentRecordCount -ne 0 -or
+    $deploymentArtifactCount -ne 0 -or
+    $appSettingsCount -ne 0 -or
+    $connectionStringCount -ne 0
+) { throw 'application-package-present' }
 Write-Output 'application-package-absent'
 
 $telemetryResources = Invoke-AzureJson {

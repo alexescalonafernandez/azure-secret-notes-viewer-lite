@@ -107,7 +107,7 @@ Secret-version validation requests JSON without a CLI-side JMESPath count and co
 
 Direct role assignments are not interchangeable with inherited effective permissions. Direct validation queries the vault scope without `--all` or `--include-inherited`, disables principal- and role-name filling, and filters exact scope locally. This global-across-principals view detects any direct Officer or application-identity assignment introduced at the vault. Effective inherited validation uses the vault scope, the current user's object ID, transitive-group expansion, and inherited-assignment inclusion, also without `--all`. An effective inherited role with Key Vault data actions invalidates the development least-privilege assumptions and causes sanitized failure as an unsupported precondition. Unrelated inherited assignments for other principals are excluded because they are not effective permissions of the development user.
 
-This human reader assignment is a local-development exception and is unrelated to `SecretNotes.Reader`. B4-D8 local Key Vault mode deliberately uses that same Azure CLI identity. B4-D7 creates no application or Managed Identity assignment, and B4-D9 preserves that fact even though it defines the Web App identity. B4-D10 must make the separate least-privilege Key Vault authorization decision before the identity can become the deployed application caller.
+This human reader assignment is a local-development exception and is unrelated to `SecretNotes.Reader`. B4-D8 local Key Vault mode deliberately uses that same Azure CLI identity. B4-D7 creates no application or Managed Identity assignment, and B4-D9 preserves that fact even though it defines the Web App identity. B4-D10 deploys the application with `Provider=InMemory` and grants no Key Vault access. B4-D11 must make the separate least-privilege Key Vault authorization decision before the identity can become the deployed Key Vault caller.
 
 The vault keeps public network access enabled so the repository owner can validate it locally. This is a documented development exception. Purge protection and seven-day soft-delete retention reduce accidental irreversible loss but also prevent immediate purge during teardown.
 
@@ -130,7 +130,7 @@ The matrix distinguishes the current implemented application authorization and o
 | Authenticated user without app role | Yes | No; denied | No | None | Implemented and covered by authorization tests; authentication alone is insufficient. |
 | Authenticated user with unrelated app role | Yes | No; denied | No | None | Implemented and covered by authorization tests; unrelated roles grant no access. |
 | User with `SecretNotes.Reader` | Yes | Yes; fixed synthetic catalog only | No | None through this app role | Implemented; the app role permits application feature use only. |
-| App Service Managed Identity | No human session | Not applicable | Not in B4-D9 | None | Defined with the gated Web App, but not authorized to Key Vault; B4-D10 owns that decision. |
+| App Service Managed Identity | No human session | Not applicable | Not in B4-D9 or B4-D10 | None until B4-D11 | Defined with the gated Web App; B4-D10 publishes with `Provider=InMemory`, and B4-D11 owns Key Vault authorization. |
 | Local developer identity | Yes when local authentication is configured | Depends on assigned app role | Yes only in explicitly selected local Key Vault mode through `AzureCliCredential` | Final direct `Key Vault Secrets User` at vault scope; temporary Officer removed | B4-D7 validation and B4-D8 owner-run local application validation completed; this remains a development-only exception. |
 | Future CI/CD identity | No | Not applicable | No for runtime reads | Deployment permissions only, deferred | GitHub Actions OIDC is deferred. |
 
@@ -221,7 +221,8 @@ Completed owner-run local validation for B4-D8:
 Still deferred:
 
 - Owner-run creation and validation of the B4-D9 App Service Managed Identity.
-- App Service Managed Identity Key Vault RBAC and deployed credential behavior.
+- B4-D10 separate cloud identity, minimum non-secret configuration, manual `Provider=InMemory` publication, and deployed authentication/authorization validation.
+- B4-D11 App Service Managed Identity Key Vault RBAC, deployed credential composition, `Provider=KeyVault`, and closed-catalog read validation.
 
 Continuing security scenarios:
 

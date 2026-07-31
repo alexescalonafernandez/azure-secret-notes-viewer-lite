@@ -221,9 +221,11 @@ Human identity and workload identity are intentionally separate:
 ## Azure resource status
 
 - Development Resource Group and Standard Key Vault: deployed and validated for B4-D7, including the final individual reader role, exact three-secret state, and absence of temporary or application-identity vault assignments.
-- Azure App Service Plan: planned and deferred.
-- Azure App Service with system-assigned Managed Identity: planned and deferred.
+- Azure App Service Plan: repository-defined behind the B4-D9 default-off gate; owner deployment and Azure validation pending.
+- Azure Web App with system-assigned Managed Identity: repository-defined behind the B4-D9 default-off gate; no application package and no Key Vault role; owner deployment and Azure validation pending.
 - Application Insights and Log Analytics: planned and deferred, with conservative telemetry, sampling, retention, and cost controls required by a later milestone.
+
+The milestone order preserves identity separation. B4-D10 creates the separate cloud App Registration, adds cloud redirect and logout URIs, supplies minimum non-secret runtime configuration, manually publishes the application with `Provider=InMemory`, and validates deployed authentication plus `SecretNotes.Reader` authorization without Managed Identity Key Vault access. B4-D11 then adds deployed workload credential composition, the vault-scoped `Key Vault Secrets User` assignment for the Web App identity, `Provider=KeyVault`, and deployed closed-catalog reads.
 
 ## Non-sensitive application configuration
 

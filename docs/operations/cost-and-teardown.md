@@ -28,11 +28,13 @@ The deployed Standard Key Vault can incur operation and retained-version costs. 
 
 ## Teardown implications
 
-Capture only sanitized evidence before teardown. Remove the Web App before its plan when dismantling only the hosting foundation. Deleting the Web App also deletes its system-assigned identity. B4-D9 creates no assignment for that identity, but any future RBAC assignment introduced by B4-D10 or another milestone must be reviewed and removed as part of teardown so a deleted principal does not leave an orphaned assignment.
+Capture only sanitized evidence before teardown. Remove the Web App before its plan when dismantling only the hosting foundation. Deleting the Web App also deletes its system-assigned identity. B4-D9 creates no assignment for that identity, but any future RBAC assignment introduced by B4-D11 or another milestone must be reviewed and removed as part of teardown so a deleted principal does not leave an orphaned assignment.
 
 The Key Vault is independent of the App Service lifecycle. Removing the Web App or plan must not remove, recreate, or modify the vault, its three synthetic secret versions, or the development-user reader assignment. The vault remains purge protected with seven-day soft-delete retention. Deleting the Resource Group would delete both hosting and vault resources and leave the vault recoverable until retention completes, so a hosting-only teardown must not delete the Resource Group.
 
 No teardown command or automation is supplied by B4-D9. Resource deletion requires a separately reviewed owner action.
+
+B4-D10 manually publishes the application with `Provider=InMemory` and validates the separate cloud identity and application authorization without granting Key Vault access. B4-D11 later adds the Web App identity's vault-scoped read role, deployed credential composition, and `Provider=KeyVault`. Teardown must preserve that order when distinguishing application-hosting cleanup from later Key Vault RBAC cleanup.
 
 ## Conceptual hosting-only teardown order
 

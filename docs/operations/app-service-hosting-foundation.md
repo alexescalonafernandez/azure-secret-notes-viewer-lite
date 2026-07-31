@@ -47,20 +47,20 @@ All commands in this section are for the repository owner in a private terminal 
 
 1. Set the private App Service Plan and Web App names, keep the fixed `westeurope` location decision, and deliberately set `provisionAppServiceHosting = true`.
 2. Run `infra/scripts/06-app-service-preflight.ps1`. It validates the CLI and Bicep toolchain, linked private parameters, subscription and signed-in identity context, the gate, local name syntax, location, and F1/Free plan definition. It emits only coarse markers.
-3. Run `infra/scripts/07-app-service-deploy.ps1` without approval. It performs subscription deployment validation and a sanitized `what-if`, permits changes only for the plan, site, and publishing credential policies, rejects deletion and unexpected resource changes, and stops with `deployment-approval-required`.
+3. Run `infra/scripts/07-app-service-deploy.ps1` without approval. It performs subscription deployment validation and a sanitized `what-if`. `Create` and `Modify` are accepted only when all three hosting categories are present; zero material changes are accepted as idempotent. Hosting `Ignore`, `Unsupported`, `Delete`, partial hosting sets, unknown change types, and unexpected resource changes fail closed. The script stops with `deployment-approval-required` unless explicit approval is supplied.
 4. Privately investigate any raw diagnostic or unexpected scope. Do not publish a complete `what-if` transcript. Share only coarse markers and the expected Microsoft.Web resource categories.
 5. After deliberate owner review, rerun `infra/scripts/07-app-service-deploy.ps1 -ApproveDeployment`. Only this explicit switch permits mutation.
-6. Run `infra/scripts/08-app-service-validate.ps1`. It uses read-only Azure queries and emits only coarse conclusions for the plan, runtime, HTTPS/TLS, disabled publishing paths, identity, absent Key Vault role, empty application state, absent private settings, and absent telemetry resources.
+6. Run `infra/scripts/08-app-service-validate.ps1`. It uses read-only Azure queries and emits only coarse conclusions for the plan, runtime, HTTPS/TLS, disabled publishing paths, identity, absent Key Vault role, empty application state, absent private settings, and absent telemetry resources. App Settings, connection strings, deployment children, and App Service deployment records are reduced to aggregate counts rather than returned as objects or values.
 
 The workflow never changes the Azure CLI context. Raw Azure stderr is suppressed from shared output, identifiers are retained only in memory for relationship comparisons, and failures close without printing names, IDs, hostnames, principals, subscription or tenant metadata, deployment names, or operation IDs.
 
 ## Security boundaries
 
-The system-assigned identity is created with the Web App but remains unauthorized. B4-D9 does not output its principal or tenant ID and creates no role assignment that consumes it. B4-D10 owns the future Key Vault RBAC decision and must preserve least privilege.
+The system-assigned identity is created with the Web App but remains unauthorized. B4-D9 does not output its principal or tenant ID and creates no role assignment that consumes it. B4-D11 owns the future Key Vault RBAC decision and must preserve least privilege.
 
 SCM and FTP basic publishing credentials are explicitly disabled with two child policies whose `allow` value is `false`. FTPS is also disabled in site configuration. No alternate username/password publishing mechanism is enabled.
 
-No application package is deployed. The App Service platform may show its default empty-site placeholder; that page is platform-created and is not evidence that the repository application was published. Post-deployment validation checks for absent source-control, deployment, and extension resources as well as absent App Settings and connection strings.
+No application package is deployed by B4-D9. The App Service platform may show its default empty-site placeholder; that page is platform-created and is not evidence that the repository application was published. The `application-package-absent` marker means precisely: no App Service deployment record or repository-defined deployment mechanism was found for the newly created empty site. It requires zero deployment records, no deployment/source-control/site-extension child resource, no App Setting, and no connection string. This is a scoped milestone assertion, not universal forensic proof that arbitrary content never existed.
 
 B4-D9 defines no App Settings, connection strings, Key Vault references, App Service Authentication, Easy Auth, deployment slots, custom domains, certificates, VNet integration, private endpoints, IP restrictions, CORS, Application Insights, Log Analytics, diagnostic settings, source control, deployment extensions, GitHub Actions, or OIDC.
 
@@ -74,4 +74,6 @@ Repository-local evidence consists of successful Bicep and example-parameter com
 
 Deleting the Web App deletes its system-assigned identity. Any later RBAC assignment for that identity must be removed or reviewed during teardown. The Key Vault is purge protected and independent of the App Service lifecycle; a hosting-only teardown must preserve it, its synthetic secret versions, and the development-user reader role. See the cost and teardown guide for the conceptual sequence.
 
-B4-D10 owns the Managed Identity-to-Key Vault authorization and deployed workload credential composition. B4-D11 owns application publishing and runtime configuration. Neither boundary is implemented or implied by B4-D9.
+B4-D10 owns the separate cloud App Registration, cloud redirect and logout URIs, minimum non-secret runtime configuration, manual application publication, `Provider=InMemory` startup, and deployed authentication plus `SecretNotes.Reader` authorization validation. It grants the Web App identity no Key Vault access.
+
+B4-D11 owns deployed workload credential composition, the vault-scoped `Key Vault Secrets User` assignment for the Web App identity, `Provider=KeyVault` in Azure, and deployed closed-catalog reads. Neither later boundary is implemented or implied by B4-D9.

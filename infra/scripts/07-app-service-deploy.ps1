@@ -76,34 +76,80 @@ $null = $allowedHostingTypes.Add('Microsoft.Web/serverfarms')
 $null = $allowedHostingTypes.Add('Microsoft.Web/sites')
 $null = $allowedHostingTypes.Add('Microsoft.Web/sites/basicPublishingCredentialsPolicies')
 
-$expectedNoChangeTypes = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-$null = $expectedNoChangeTypes.Add('Microsoft.Resources/resourceGroups')
-$null = $expectedNoChangeTypes.Add('Microsoft.KeyVault/vaults')
-$null = $expectedNoChangeTypes.Add('Microsoft.Authorization/roleAssignments')
-$null = $expectedNoChangeTypes.Add('Microsoft.Resources/deployments')
+$knownExistingTypes = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$null = $knownExistingTypes.Add('Microsoft.Resources/resourceGroups')
+$null = $knownExistingTypes.Add('Microsoft.KeyVault/vaults')
+$null = $knownExistingTypes.Add('Microsoft.Authorization/roleAssignments')
+$null = $knownExistingTypes.Add('Microsoft.Resources/deployments')
 
 $changedHostingTypes = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($change in @($whatIf.changes)) {
-    $changeType = [string] $change.changeType
+    $changeTypeProperty = $change.PSObject.Properties['changeType']
+    if ($null -eq $changeTypeProperty) { throw 'unknown-change-type-detected' }
+    $changeType = ([string] $changeTypeProperty.Value).Trim()
+    if ([string]::IsNullOrWhiteSpace($changeType)) { throw 'unknown-change-type-detected' }
     $resourceType = Get-WhatIfResourceType -Change $change
 
-    if ($changeType -ieq 'Delete') { throw 'destructive-change-detected' }
-    if ($changeType -iin @('NoChange', 'Ignore')) { continue }
-    if (
-        $changeType -ieq 'Deploy' -and
-        $resourceType -ieq 'Microsoft.Resources/deployments'
-    ) { continue }
-    if ([string]::IsNullOrWhiteSpace($resourceType)) { throw 'what-if-resource-type-missing' }
-    if (-not $allowedHostingTypes.Contains($resourceType)) {
-        if ($expectedNoChangeTypes.Contains($resourceType)) { throw 'existing-resource-change-detected' }
-        throw 'unexpected-resource-type-detected'
+    switch ($changeType.ToLowerInvariant()) {
+        'nochange' {
+            continue
+        }
+        'ignore' {
+            if ([string]::IsNullOrWhiteSpace($resourceType)) {
+                throw 'what-if-resource-type-missing'
+            }
+            if ($allowedHostingTypes.Contains($resourceType)) {
+                throw 'hosting-ignore-detected'
+            }
+            if (-not $knownExistingTypes.Contains($resourceType)) {
+                throw 'unexpected-resource-type-detected'
+            }
+            continue
+        }
+        'deploy' {
+            if ([string]::IsNullOrWhiteSpace($resourceType)) {
+                throw 'what-if-resource-type-missing'
+            }
+            if ($resourceType -ine 'Microsoft.Resources/deployments') {
+                throw 'unexpected-resource-type-detected'
+            }
+            continue
+        }
+        { $_ -in @('create', 'modify') } {
+            if ([string]::IsNullOrWhiteSpace($resourceType)) {
+                throw 'what-if-resource-type-missing'
+            }
+            if (-not $allowedHostingTypes.Contains($resourceType)) {
+                if ($knownExistingTypes.Contains($resourceType)) {
+                    throw 'existing-resource-change-detected'
+                }
+                throw 'unexpected-resource-type-detected'
+            }
+            $null = $changedHostingTypes.Add($resourceType)
+            continue
+        }
+        'delete' {
+            throw 'destructive-change-detected'
+        }
+        'unsupported' {
+            throw 'unsupported-change-detected'
+        }
+        default {
+            throw 'unknown-change-type-detected'
+        }
     }
-
-    $null = $changedHostingTypes.Add($resourceType)
 }
 
-foreach ($resourceType in @($changedHostingTypes | Sort-Object)) {
-    Write-Output ('what-if-category:{0}' -f $resourceType)
+if ($changedHostingTypes.Count -eq 0) {
+    Write-Output 'what-if-idempotent'
+}
+else {
+    if (-not $changedHostingTypes.SetEquals($allowedHostingTypes)) {
+        throw 'partial-hosting-change-set-detected'
+    }
+    foreach ($resourceType in @($changedHostingTypes | Sort-Object)) {
+        Write-Output ('what-if-category:{0}' -f $resourceType)
+    }
 }
 Write-Output 'what-if-scope-valid'
 
