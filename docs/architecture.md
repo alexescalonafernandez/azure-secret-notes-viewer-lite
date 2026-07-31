@@ -4,11 +4,11 @@
 
 Secret Notes Viewer Lite is a small ASP.NET Core Razor Pages application planned for future hosting on Azure App Service. It authenticates users with a single Microsoft Entra ID tenant and authorizes access to `/Notes` with the configured `SecretNotes.Reader` app role. The application owns a closed catalog of logical note identifiers and display names. The target architecture will resolve those logical identifiers to synthetic demonstration note secrets in Azure Key Vault by using the App Service system-assigned Managed Identity.
 
-The application user never accesses Azure Key Vault directly. The web application is the policy enforcement point for user authorization, and the future Managed Identity is the workload identity that will call Key Vault. B4-D7 separately defines a local operator exception for owner-run bootstrap and validation.
+The application user never accesses Azure Key Vault directly. The web application is the policy enforcement point for user authorization. B4-D8 local mode uses the separately authorized Azure CLI development identity as the Key Vault caller; a future deployed application will use a workload identity.
 
 ### Deferred application target state
 
-The complete diagram below remains the deferred application target state. B4-D7 is complete: the repository owner deployed and validated the development Key Vault, proved control-plane/data-plane separation, created the exact three synthetic secrets and completed write-free partial-bootstrap recovery without additional versions, verified temporary Officer cleanup, and deployed the final individual reader assignment. App Service deployment, the Key Vault provider adapter and logical-to-physical mapping, `SecretClient`, `DefaultAzureCredential`, Managed Identity, application-identity RBAC, telemetry, and CI/CD remain deferred to B4-D8 or later.
+The complete diagram below remains the deferred deployed target state. B4-D7 infrastructure is owner-validated, and B4-D8 implements the provider adapter, closed mapping, and `SecretClient` composition for local use with `AzureCliCredential`. App Service deployment, its workload credential composition, Managed Identity, application-identity RBAC, telemetry, and CI/CD remain deferred.
 
 ```mermaid
 flowchart LR
@@ -93,7 +93,38 @@ The vault definition enables Azure RBAC, purge protection, seven-day soft-delete
 
 `00-preflight.ps1` validates both `main.bicep` and the ignored local `.bicepparam`. The final owner-run path completed successfully: initial deployment, negative data-plane validation, write-free partial-bootstrap recovery, temporary Officer cleanup, final reader deployment, and final vault/secret/RBAC validation all passed. Historical corrections kept the linked `.bicepparam` self-contained, removed incompatible `--all` plus `--scope` role queries, added explicit write-free partial-bootstrap recovery, preserved JSON timestamps with `-DateKind String`, and moved secret-version counting from `length(@)` into PowerShell.
 
-Scripts 04 and 05 suppress raw Azure diagnostics while preserving script-generated sanitized failure reasons and coarse markers. B4-D7 Azure state is owner-validated. B4-D8 remains responsible for the application adapter and Azure SDK integration; `INoteContentProvider` continues to use `InMemoryNoteContentProvider`.
+Scripts 04 and 05 suppress raw Azure diagnostics while preserving script-generated sanitized failure reasons and coarse markers. B4-D7 Azure state is owner-validated.
+
+## Implemented B4-D8 local provider boundary
+
+The committed default remains entirely local:
+
+```text
+ClosedNoteCatalog
+→ ReadNotesService
+→ INoteContentProvider
+→ InMemoryNoteContentProvider
+```
+
+An explicit startup selection enables the local Key Vault path:
+
+```text
+Authorized /Notes request
+→ Notes PageModel
+→ IReadNotesService
+→ ClosedNoteCatalog
+→ INoteContentProvider
+→ KeyVaultNoteContentProvider
+→ singleton SecretClient
+→ AzureCliCredential
+→ development Key Vault
+```
+
+Provider selection occurs once during composition and supports only `InMemory` and `KeyVault`. In-memory mode does not bind Key Vault options or register Azure SDK services. Key Vault mode validates the vault URI and three closed physical-name fields at startup, registers one reusable client, and never registers or falls back to the in-memory adapter.
+
+`ClosedNoteCatalog` remains the sole source of membership and order. `KeyVaultNoteContentProvider` owns an exhaustive code mapping from the three `NoteId` values to the three configured physical names. It issues only `GetSecretAsync` for the active version, performs no enumeration or caching, and converts expected Azure or unavailable-value failures to a fixed application exception without retaining raw diagnostics. Automated tests replace `SecretClient` through its protected constructor and virtual read method, so they require no Azure login, network, CLI execution, User Secrets, or additional production abstraction.
+
+Owner-run local validation completed successfully. Explicit `KeyVault` composition started with `AzureCliCredential` using the previously validated development identity, and the closed three-note catalog resolved through the reusable `SecretClient`. Arbitrary query input did not alter membership, order, or secret selection; application authorization and no-store behavior remained intact; and no sensitive rendering or logging was observed. Explicitly selecting `InMemory` again restored Azure-independent operation. This local caller remains the server-side Azure CLI development identity; the future deployed caller remains the deferred App Service system-assigned Managed Identity.
 
 ## Actors and Azure components
 
@@ -102,7 +133,7 @@ Scripts 04 and 05 suppress raw Azure diagnostics while preserving script-generat
 - **ASP.NET Core Razor Pages:** The planned web application and user authorization enforcement point.
 - **Azure App Service:** The planned hosting platform for the Razor Pages application.
 - **System-assigned Managed Identity:** The workload identity attached to App Service and used by the application to authenticate to Azure Key Vault.
-- **Azure Key Vault:** The deployed and validated B4-D7 development secret store for synthetic demonstration note values; application retrieval remains deferred.
+- **Azure Key Vault:** The deployed and validated B4-D7 development secret store; completed B4-D8 owner-run validation proved that explicitly selected local mode can read its closed synthetic note set.
 - **Azure RBAC:** The authorization system used to grant the Managed Identity data-plane access to Key Vault secrets.
 
 ## Development identity bootstrap
@@ -135,11 +166,11 @@ Authentication proves who the human user is. It does not grant direct Key Vault 
 
 The app role authorizes the user to use the application feature only. It does not authorize the user to call Key Vault.
 
-## Deferred target state: Key Vault access flow
+## Deferred deployed Key Vault access flow
 
 1. `ClosedNoteCatalog` supplies an application-owned logical `NoteId`.
-2. A future `INoteContentProvider` adapter maps that logical ID to a physical Key Vault name.
-3. The adapter creates an Azure SDK `SecretClient` using `DefaultAzureCredential`.
+2. The implemented `INoteContentProvider` adapter maps that logical ID to a physical Key Vault name.
+3. Deployed composition will create an Azure SDK `SecretClient` using the future workload credential decision.
 4. In Azure App Service, `DefaultAzureCredential` uses the system-assigned Managed Identity.
 5. Azure Key Vault authorizes the Managed Identity through Azure RBAC.
 6. The Managed Identity is expected to receive only the `Key Vault Secrets User` role scoped as narrowly as practical.
@@ -153,7 +184,7 @@ Users must not provide arbitrary secret names, query strings, or route values th
 - **Application to Microsoft Entra ID:** Authentication depends on configured tenant and application registration metadata.
 - **Application authorization boundary:** `/Notes` requires the `ReadSecretNotes` policy and its `SecretNotes.Reader` role requirement before the notes service executes.
 - **Application service boundary:** The PageModel accepts no identifier input. `ReadNotesService` reads only `ClosedNoteCatalog`, and the provider accepts only known logical `NoteId` values.
-- **Application to Azure Key Vault:** Only the workload identity crosses this boundary; the human user's token is not used for Key Vault access.
+- **Application to Azure Key Vault:** In B4-D8 local mode, the server-side Azure CLI development identity crosses this boundary. In the future deployed state, the App Service workload identity will cross it. The browser user's token never crosses this boundary.
 - **Operational evidence boundary:** Screenshots, logs, terminal output, Issues, and pull requests must not contain secret values or sensitive identifiers.
 
 ## Human identity vs. workload identity
@@ -165,6 +196,7 @@ Human identity and workload identity are intentionally separate:
 - The future App Service Managed Identity will authenticate the workload to Azure Key Vault.
 - Azure RBAC will authorize the Managed Identity, not the human user, to read approved secrets.
 - B4-D7 uses the local developer identity only for manual bootstrap and validation: temporary `Key Vault Secrets Officer`, followed by persistent `Key Vault Secrets User`, both at the individual development vault.
+- B4-D8 local Key Vault mode uses `AzureCliCredential` deterministically, so the same Azure CLI identity was the runtime Key Vault caller during completed owner-run validation.
 - No application identity or Managed Identity role assignment is introduced by B4-D7.
 
 ## Azure resource status
@@ -185,3 +217,4 @@ Non-secret deployment identifiers may be supplied as runtime configuration, incl
 - No storage of secret values in source control, App Settings, logs, exceptions, telemetry, URLs, screenshots, videos, Issues, pull requests, or terminal evidence.
 - B4-D6 implements the closed logical catalog, application service, in-memory content provider, model-driven Razor rendering, no-store behavior, and unit/integration tests. It changes no infrastructure, deployment configuration, Azure resources, Entra ID resources, telemetry, or CI/CD.
 - B4-D7 changes repository infrastructure and operational evidence only. It performs no application, Entra ID, App Service, Managed Identity, telemetry, or CI/CD integration.
+- B4-D8 adds only the optional local Key Vault adapter, Azure-free tests, operational guidance, and sanitized owner-run validation evidence. It performs no Azure mutation and adds no App Service, Managed Identity, telemetry, or CI/CD integration.
