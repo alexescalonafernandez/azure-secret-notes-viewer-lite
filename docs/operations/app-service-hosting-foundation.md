@@ -2,7 +2,7 @@
 
 ## Status
 
-B4-D9 has repository implementation present and repository-local validation complete. Owner-run Azure validation is pending, so the milestone is not ready for a pull request. This guide does not claim that the App Service resources exist in Azure.
+B4-D9 repository implementation, owner-run deployment, and post-deployment validation are complete. The validated Azure state is one Linux F1 / Free App Service Plan and one empty Linux Web App; application publication and later application-integration milestones remain separate.
 
 ## Objective and scope
 
@@ -54,6 +54,31 @@ All commands in this section are for the repository owner in a private terminal 
 
 The workflow never changes the Azure CLI context. Raw Azure stderr is suppressed from shared output, identifiers are retained only in memory for relationship comparisons, and failures close without printing names, IDs, hostnames, principals, subscription or tenant metadata, deployment names, or operation IDs.
 
+## Sanitized owner-run evidence
+
+The owner completed preflight, subscription deployment validation, sanitized `what-if` review, explicit deployment, and post-deployment validation. The approved post-deployment evidence is:
+
+```text
+app-service-plan-valid
+linux-web-app-valid
+public-network-access-valid
+client-affinity-disabled
+dotnet-runtime-valid
+https-only-valid
+minimum-tls-valid
+scm-minimum-tls-valid
+ftp-disabled
+publishing-credentials-disabled
+system-assigned-identity-valid
+key-vault-rbac-absent
+private-settings-absent
+application-package-absent
+telemetry-resources-absent
+app-service-validation-valid
+```
+
+These markers establish the scoped B4-D9 hosting state only. They do not prove application behavior, because no application package has been published. They also preserve the distinction between identity and authorization: the system-assigned identity exists, but it has no Key Vault role.
+
 ## Security boundaries
 
 The system-assigned identity is created with the Web App but remains unauthorized. B4-D9 does not output its principal or tenant ID and creates no role assignment that consumes it. B4-D11 owns the future Key Vault RBAC decision and must preserve least privilege.
@@ -68,7 +93,7 @@ B4-D9 defines no App Settings, connection strings, Key Vault references, App Ser
 
 Share only the documented coarse success markers and expected resource categories. Never share the private parameter file, names, IDs, hostnames, principal or tenant data, subscription metadata, raw validation or deployment output, complete `what-if` output, deployment or operation IDs, settings values, role objects, URLs, screenshots containing metadata, or Azure errors.
 
-Repository-local evidence consists of successful Bicep and example-parameter compilation, Release restore/build/test results, `git diff --check`, and focused static security searches. Azure success must not be inferred from those checks; owner-run preflight, validation, reviewed `what-if`, explicit deployment, and post-deployment validation remain separate evidence.
+Repository-local evidence consists of successful Bicep and example-parameter compilation, Release restore/build/test results, `git diff --check`, and focused static security searches. Azure success is recorded separately through the completed owner-run preflight, validation, reviewed `what-if`, explicit deployment, and sanitized post-deployment markers above.
 
 ## Teardown and later milestones
 

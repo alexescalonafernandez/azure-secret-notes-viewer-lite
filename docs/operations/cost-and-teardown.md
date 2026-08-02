@@ -1,14 +1,14 @@
 # Cost and teardown operations
 
-This document is non-executable. The accumulated owner-validated state is one development Resource Group, one Standard Key Vault containing the three synthetic secret fixtures and versions, and the validated development-user reader role. B4-D9 App Service resources remain pending owner deployment.
+This document is non-executable. The accumulated owner-validated state is one development Resource Group, one Standard Key Vault containing the three synthetic secret fixtures and versions, the validated development-user reader role, one Linux F1 / Free App Service Plan, and one empty Linux Web App with a system-assigned Managed Identity.
 
-## Current and pending Azure resources
+## Current and deferred Azure resources
 
 - Development Resource Group: deployed.
 - Standard Key Vault: deployed, purge protected, and validated.
 - Development-user vault-scoped `Key Vault Secrets User`: deployed and validated.
-- Linux App Service Plan F1 and empty Linux Web App: repository implementation present; owner deployment and Azure validation pending.
-- Web App system-assigned Managed Identity: created only when the pending Web App deployment occurs; B4-D9 assigns it no role.
+- Linux App Service Plan F1 and empty Linux Web App: deployed and owner-validated.
+- Web App system-assigned Managed Identity: deployed and validated; B4-D9 assigns it no role, because identity creation is not authorization.
 - Application Insights and Log Analytics: not introduced and deferred.
 
 ## Expected sources of cost
@@ -19,7 +19,7 @@ The deployed Standard Key Vault can incur operation and retained-version costs. 
 
 ## Rules for keeping costs low
 
-- Keep `provisionAppServiceHosting = false` until an owner deliberately prepares and reviews the private parameters.
+- Keep the validated hosting footprint limited to the single F1 plan and empty Web App unless a later milestone explicitly authorizes expansion.
 - Use F1 only for the scoped learning validation; do not represent it as production hosting.
 - Do not publish the application merely to validate the empty hosting foundation.
 - Deploy only resources required by the active milestone.

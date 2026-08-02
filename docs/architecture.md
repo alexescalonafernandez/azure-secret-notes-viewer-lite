@@ -8,7 +8,7 @@ The application user never accesses Azure Key Vault directly. The web applicatio
 
 ### Deferred application target state
 
-The complete diagram below remains the deferred deployed target state. B4-D7 infrastructure is owner-validated, B4-D8 is merged, and B4-D9 defines an empty App Service host and its identity behind a default-off gate. Owner-run App Service deployment and validation, workload credential composition, application-identity RBAC, application publishing, telemetry, and CI/CD remain deferred.
+The complete diagram below remains the deferred application target state. B4-D7 infrastructure is owner-validated, B4-D8 is merged, and B4-D9 has deployed and owner-validated an empty App Service host and its system-assigned identity. Workload credential composition, application-identity RBAC, application publishing, telemetry, and CI/CD remain deferred.
 
 ```mermaid
 flowchart LR
@@ -124,11 +124,11 @@ Provider selection occurs once during composition and supports only `InMemory` a
 
 `ClosedNoteCatalog` remains the sole source of membership and order. `KeyVaultNoteContentProvider` owns an exhaustive code mapping from the three `NoteId` values to the three configured physical names. It issues only `GetSecretAsync` for the active version, performs no enumeration or caching, and converts expected Azure or unavailable-value failures to a fixed application exception without retaining raw diagnostics. Automated tests replace `SecretClient` through its protected constructor and virtual read method, so they require no Azure login, network, CLI execution, User Secrets, or additional production abstraction.
 
-Owner-run local validation completed successfully. Explicit `KeyVault` composition started with `AzureCliCredential` using the previously validated development identity, and the closed three-note catalog resolved through the reusable `SecretClient`. Arbitrary query input did not alter membership, order, or secret selection; application authorization and no-store behavior remained intact; and no sensitive rendering or logging was observed. Explicitly selecting `InMemory` again restored Azure-independent operation. This local caller remains the server-side Azure CLI development identity; the future deployed caller remains the deferred App Service system-assigned Managed Identity.
+Owner-run local validation completed successfully. Explicit `KeyVault` composition started with `AzureCliCredential` using the previously validated development identity, and the closed three-note catalog resolved through the reusable `SecretClient`. Arbitrary query input did not alter membership, order, or secret selection; application authorization and no-store behavior remained intact; and no sensitive rendering or logging was observed. Explicitly selecting `InMemory` again restored Azure-independent operation. This local caller remains the server-side Azure CLI development identity; the deployed App Service system-assigned Managed Identity exists but remains a deferred Key Vault caller.
 
-## Repository-defined B4-D9 hosting boundary
+## Owner-validated B4-D9 hosting boundary
 
-B4-D9 adds only the hosting foundation, gated by `provisionAppServiceHosting = false` by default:
+B4-D9 deploys only the hosting foundation, while the repository definition remains gated by `provisionAppServiceHosting = false` by default:
 
 ```text
 Existing development Resource Group
@@ -137,21 +137,22 @@ Existing development Resource Group
 └── empty Linux Web App
     ├── DOTNETCORE|10.0
     ├── HTTPS-only and TLS 1.2 minimum
+    ├── public network access enabled and client affinity disabled
     ├── FTP/FTPS and SCM/FTP basic publishing disabled
     └── system-assigned Managed Identity without Key Vault authorization
 ```
 
 The plan module and Web App module share only the existing Resource Group scope and tags. The Web App depends on the plan resource ID; neither hosting module depends on Key Vault, and Key Vault does not depend on hosting. No application package, App Settings, connection strings, Key Vault reference, authentication configuration, telemetry, slot, networking integration, or deployment mechanism is defined.
 
-The stable `Microsoft.Web/serverfarms@2025-03-01`, `Microsoft.Web/sites@2025-03-01`, and `Microsoft.Web/sites/basicPublishingCredentialsPolicies@2025-03-01` schemas represent all required properties. Repository-local validation is complete, while owner-run Azure validation and deployment remain pending.
+The stable `Microsoft.Web/serverfarms@2025-03-01`, `Microsoft.Web/sites@2025-03-01`, and `Microsoft.Web/sites/basicPublishingCredentialsPolicies@2025-03-01` schemas represent all required properties. Owner-run deployment and post-deployment validation completed successfully. The validated state is one Linux F1 / Free plan and one empty Linux Web App using `DOTNETCORE|10.0`, with HTTPS-only, site and SCM TLS 1.2, disabled FTP/FTPS and basic publishing credentials, enabled public network access, disabled client affinity, and one system-assigned Managed Identity. Validation also proved that no direct Key Vault role, App Setting, connection string, application package, repository-defined deployment artifact, Application Insights resource, or Log Analytics workspace was introduced.
 
 ## Actors and Azure components
 
 - **User:** A human browser user who may be anonymous, authenticated without the app role, or authenticated with `SecretNotes.Reader`.
 - **Microsoft Entra ID:** The single-tenant identity provider for user authentication and app-role claims.
 - **ASP.NET Core Razor Pages:** The planned web application and user authorization enforcement point.
-- **Azure App Service:** The repository-defined, not-yet-owner-validated hosting platform for the Razor Pages application; B4-D9 creates no application package.
-- **System-assigned Managed Identity:** The identity created with the Web App when the gate is enabled. B4-D9 grants it no Key Vault permission.
+- **Azure App Service:** The deployed and owner-validated empty hosting platform for the future Razor Pages publication; B4-D9 creates no application package.
+- **System-assigned Managed Identity:** The identity created with the deployed Web App. Its existence is not authorization, and B4-D9 grants it no Key Vault permission.
 - **Azure Key Vault:** The deployed and validated B4-D7 development secret store; completed B4-D8 owner-run validation proved that explicitly selected local mode can read its closed synthetic note set.
 - **Azure RBAC:** The authorization system used to grant the Managed Identity data-plane access to Key Vault secrets.
 
@@ -162,7 +163,7 @@ The development identity metadata and local application authentication are imple
 - **Application object / App Registration:** The development-specific `Secret Notes Viewer Lite - Development` App Registration defines the single-tenant identity-platform configuration, localhost HTTPS callbacks, `SecretNotes.Reader` app role, ownership, and credential registrations. One short-lived development-only client credential supports the local confidential-client flow; no API permission is configured.
 - **Service principal / Enterprise Application:** The corresponding Enterprise Application represents the application in the tenant. Assignment is required, it is hidden from My Apps, and it holds tenant-local assignments.
 - **Human authorization:** One individual human user is assigned to the `Secret Notes Reader` role for development validation. The implemented `ReadSecretNotes` policy uses that app-role value to authorize the `/Notes` fixed synthetic shell.
-- **Future workload identity:** A future App Service system-assigned Managed Identity will call Azure Key Vault. Neither the assigned human user nor the human user's Entra token is the Key Vault caller.
+- **Deployed workload identity:** The App Service system-assigned Managed Identity will call Azure Key Vault only after B4-D11 adds workload composition and minimum RBAC. Neither the assigned human user nor the human user's Entra token is the deployed Key Vault caller.
 
 The existing registration is development-specific and contains localhost HTTPS endpoints only. A separate production App Registration will be created in a future deployment milestone. Production App Service endpoints must not be added to the development registration, and development and production credential lifecycles must remain separate.
 
@@ -203,7 +204,7 @@ Users must not provide arbitrary secret names, query strings, or route values th
 - **Application to Microsoft Entra ID:** Authentication depends on configured tenant and application registration metadata.
 - **Application authorization boundary:** `/Notes` requires the `ReadSecretNotes` policy and its `SecretNotes.Reader` role requirement before the notes service executes.
 - **Application service boundary:** The PageModel accepts no identifier input. `ReadNotesService` reads only `ClosedNoteCatalog`, and the provider accepts only known logical `NoteId` values.
-- **Application to Azure Key Vault:** In B4-D8 local mode, the server-side Azure CLI development identity crosses this boundary. In the future deployed state, the App Service workload identity will cross it. The browser user's token never crosses this boundary.
+- **Application to Azure Key Vault:** In B4-D8 local mode, the server-side Azure CLI development identity crosses this boundary. In the B4-D11 deployed state, the App Service workload identity will cross it. The browser user's token never crosses this boundary.
 - **Operational evidence boundary:** Screenshots, logs, terminal output, Issues, and pull requests must not contain secret values or sensitive identifiers.
 
 ## Human identity vs. workload identity
@@ -212,7 +213,7 @@ Human identity and workload identity are intentionally separate:
 
 - The human identity authenticates to the application with Microsoft Entra ID.
 - The human identity is authorized inside the application with `SecretNotes.Reader`.
-- The future App Service Managed Identity will authenticate the workload to Azure Key Vault.
+- The deployed App Service Managed Identity will authenticate the workload to Azure Key Vault only after B4-D11 enables that path.
 - Azure RBAC will authorize the Managed Identity, not the human user, to read approved secrets.
 - B4-D7 uses the local developer identity only for manual bootstrap and validation: temporary `Key Vault Secrets Officer`, followed by persistent `Key Vault Secrets User`, both at the individual development vault.
 - B4-D8 local Key Vault mode uses `AzureCliCredential` deterministically, so the same Azure CLI identity was the runtime Key Vault caller during completed owner-run validation.
@@ -221,8 +222,8 @@ Human identity and workload identity are intentionally separate:
 ## Azure resource status
 
 - Development Resource Group and Standard Key Vault: deployed and validated for B4-D7, including the final individual reader role, exact three-secret state, and absence of temporary or application-identity vault assignments.
-- Azure App Service Plan: repository-defined behind the B4-D9 default-off gate; owner deployment and Azure validation pending.
-- Azure Web App with system-assigned Managed Identity: repository-defined behind the B4-D9 default-off gate; no application package and no Key Vault role; owner deployment and Azure validation pending.
+- Azure App Service Plan: one deployed and owner-validated Linux F1 / Free plan, still repository-defined behind the default-off gate.
+- Azure Web App with system-assigned Managed Identity: one deployed and owner-validated empty Linux Web App; no application package and no Key Vault role.
 - Application Insights and Log Analytics: planned and deferred, with conservative telemetry, sampling, retention, and cost controls required by a later milestone.
 
 The milestone order preserves identity separation. B4-D10 creates the separate cloud App Registration, adds cloud redirect and logout URIs, supplies minimum non-secret runtime configuration, manually publishes the application with `Provider=InMemory`, and validates deployed authentication plus `SecretNotes.Reader` authorization without Managed Identity Key Vault access. B4-D11 then adds deployed workload credential composition, the vault-scoped `Key Vault Secrets User` assignment for the Web App identity, `Provider=KeyVault`, and deployed closed-catalog reads.

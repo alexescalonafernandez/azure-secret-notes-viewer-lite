@@ -18,7 +18,7 @@ Only synthetic demonstration secrets may be used later. Tenant IDs and applicati
 - **Authenticated user without app role:** Has a valid single-tenant Entra ID session but lacks `SecretNotes.Reader`.
 - **Authenticated user with unrelated app role:** Has a valid single-tenant Entra ID session, but an unrelated role does not authorize `/Notes`.
 - **User with `SecretNotes.Reader`:** Has a valid single-tenant Entra ID session and the application role required for `/Notes`.
-- **App Service Managed Identity:** The system-assigned workload identity used by the deployed application to access Key Vault.
+- **App Service Managed Identity:** The system-assigned identity created with the deployed empty Web App. It remains unauthorized in B4-D9 and becomes a Key Vault caller only after B4-D11 grants minimum RBAC and enables deployed Key Vault composition.
 - **Local developer identity:** Used through `AzureCliCredential` for explicit local Key Vault mode and owner-run validation; it must not be assumed to represent production workload permissions.
 - **Future CI/CD identity:** Deferred identity for deployment automation, potentially GitHub Actions OIDC in a later milestone.
 - **Synthetic integration-test principal:** A non-identifying test-only principal used to exercise authorization branches without changing a real Entra user or assignment.
@@ -87,7 +87,7 @@ The production application contains no test scheme, test-header handling, authen
 
 ## System-assigned Managed Identity
 
-B4-D9 defines a system-assigned Managed Identity on the gated Linux Web App. The identity lifecycle is tied to the App Service, reducing the need to manage a separate credential. It is intentionally unauthorized: no B4-D9 role assignment consumes its principal ID, and no Key Vault reference or deployed credential composition is configured. Owner-run Azure validation remains pending. B4-D8 continues to use only `AzureCliCredential` for deterministic local access with the B4-D7 development identity.
+B4-D9 deployed and owner-validated a system-assigned Managed Identity on the empty Linux Web App. The identity lifecycle is tied to App Service, reducing the need to manage a separate credential. Creating it is not authorization: no B4-D9 role assignment consumes its principal ID, no direct Key Vault role is present, and no Key Vault reference or deployed credential composition is configured. B4-D8 continues to use only `AzureCliCredential` for deterministic local access with the B4-D7 development identity.
 
 ## Key Vault Azure RBAC
 
@@ -130,7 +130,7 @@ The matrix distinguishes the current implemented application authorization and o
 | Authenticated user without app role | Yes | No; denied | No | None | Implemented and covered by authorization tests; authentication alone is insufficient. |
 | Authenticated user with unrelated app role | Yes | No; denied | No | None | Implemented and covered by authorization tests; unrelated roles grant no access. |
 | User with `SecretNotes.Reader` | Yes | Yes; fixed synthetic catalog only | No | None through this app role | Implemented; the app role permits application feature use only. |
-| App Service Managed Identity | No human session | Not applicable | Not in B4-D9 or B4-D10 | None until B4-D11 | Defined with the gated Web App; B4-D10 publishes with `Provider=InMemory`, and B4-D11 owns Key Vault authorization. |
+| App Service Managed Identity | No human session | Not applicable | Not in B4-D9 or B4-D10 | None until B4-D11 | Deployed with the empty Web App; B4-D10 publishes with `Provider=InMemory`, and B4-D11 owns Key Vault authorization. |
 | Local developer identity | Yes when local authentication is configured | Depends on assigned app role | Yes only in explicitly selected local Key Vault mode through `AzureCliCredential` | Final direct `Key Vault Secrets User` at vault scope; temporary Officer removed | B4-D7 validation and B4-D8 owner-run local application validation completed; this remains a development-only exception. |
 | Future CI/CD identity | No | Not applicable | No for runtime reads | Deployment permissions only, deferred | GitHub Actions OIDC is deferred. |
 
@@ -218,9 +218,15 @@ Completed owner-run local validation for B4-D8:
 - Logs contained no secret values or physical names, while rendered output contained no Azure identifiers or raw Azure diagnostics.
 - The Azure CLI developer identity remained a local-development exception, and explicit `InMemory` selection restored operation without Key Vault access.
 
+Completed owner-run validation for B4-D9:
+
+- One Linux F1 / Free App Service Plan and one empty `DOTNETCORE|10.0` Linux Web App are deployed.
+- HTTPS-only, site and SCM TLS 1.2, disabled FTP/FTPS, disabled SCM and FTP basic publishing credentials, enabled public network access, and disabled client affinity were validated.
+- The system-assigned Managed Identity exists but has no direct Key Vault RBAC assignment.
+- No App Settings, connection strings, application package, repository-defined deployment artifact, Application Insights resource, or Log Analytics workspace exists for this milestone.
+
 Still deferred:
 
-- Owner-run creation and validation of the B4-D9 App Service Managed Identity.
 - B4-D10 separate cloud identity, minimum non-secret configuration, manual `Provider=InMemory` publication, and deployed authentication/authorization validation.
 - B4-D11 App Service Managed Identity Key Vault RBAC, deployed credential composition, `Provider=KeyVault`, and closed-catalog read validation.
 
