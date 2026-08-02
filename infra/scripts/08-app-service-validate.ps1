@@ -140,17 +140,42 @@ $plan = Invoke-AzureJson {
         --resource-group $resourceGroupName `
         --name $appServicePlanName `
         --subscription $subscriptionId `
-        --query '{id:id,kind:kind,reserved:reserved,skuName:sku.name,skuTier:sku.tier}' `
+        --query '{id:id,kind:kind,skuName:sku.name,skuTier:sku.tier}' `
         --output json `
         --only-show-errors
 }
 if (
     [string]::IsNullOrWhiteSpace([string] $plan.id) -or
     $plan.kind -notmatch '(?i)linux' -or
-    $plan.reserved -ne $true -or
     $plan.skuName -cne 'F1' -or
     $plan.skuTier -cne 'Free'
 ) { throw 'app-service-plan-invalid' }
+
+$planArmState = Invoke-AzureJson {
+    & az resource show `
+        --ids $plan.id `
+        --api-version 2025-03-01 `
+        --subscription $subscriptionId `
+        --query '{type:type,reserved:properties.reserved}' `
+        --output json `
+        --only-show-errors
+}
+if ($null -eq $planArmState) {
+    throw 'app-service-plan-linux-reservation-invalid'
+}
+$planTypeProperty = $planArmState.PSObject.Properties['type']
+$planReservedProperty = $planArmState.PSObject.Properties['reserved']
+if (
+    $null -eq $planTypeProperty -or
+    $null -eq $planReservedProperty -or
+    -not [string]::Equals(
+        [string] $planTypeProperty.Value,
+        'Microsoft.Web/serverfarms',
+        [StringComparison]::OrdinalIgnoreCase
+    ) -or
+    $planReservedProperty.Value -isnot [bool] -or
+    $planReservedProperty.Value -ne $true
+) { throw 'app-service-plan-linux-reservation-invalid' }
 Write-Output 'app-service-plan-valid'
 
 $webApp = Invoke-AzureJson {
