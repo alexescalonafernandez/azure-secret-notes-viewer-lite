@@ -24,15 +24,17 @@ The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages w
 - Azure Key Vault using Azure RBAC, with the Managed Identity expected to receive `Key Vault Secrets User`.
 - Azure SDK `SecretClient` with `DefaultAzureCredential`.
 - Bicep as the persistent-state source of truth for the development Resource Group, Key Vault, and final local reader assignment.
-- .NET 10 LTS with target framework `net10.0`, Azure CLI runtime argument `DOTNETCORE:10.0`, and future Bicep/App Service `linuxFxVersion` value `DOTNETCORE|10.0`.
+- .NET 10 LTS with target framework `net10.0`, Azure CLI runtime argument `DOTNETCORE:10.0`, and deployed Bicep/App Service `linuxFxVersion` value `DOTNETCORE|10.0`.
 
 ## Current status
 
-`B4-D8 — Local Key Vault Note Provider`
+`B4-D9 — Provision Minimal Linux App Service Hosting Foundation`
 
 The committed application still selects `InMemoryNoteContentProvider`. An explicit `NoteContent:Provider=KeyVault` local override binds and validates one vault URI and exactly three physical names, then registers one reusable `SecretClient` with `AzureCliCredential`. The code-owned mapping accepts only the closed `NoteId` set, performs only active-version `GetSecretAsync` reads, never enumerates secrets, never falls back to in-memory content, and translates Azure request, credential, or unavailable-value failures to a fixed provider-neutral exception.
 
-B4-D7 infrastructure validation is complete. B4-D8 implementation, Azure-free repository validation, and owner-run local Key Vault validation are complete, and the milestone is ready for pull-request review. `InMemory` remains the committed default, while `KeyVault` remains an explicit local override that uses the previously validated Azure CLI development identity. App Service, Managed Identity, deployed application integration, telemetry, and CI/CD remain deferred.
+B4-D7 infrastructure validation and B4-D8 local Key Vault provider validation are complete and merged. B4-D9 deployed and owner-validated one F1 / Free Linux App Service Plan and one empty .NET 10 Linux Web App with public network access enabled, client affinity disabled, hardened transport and publishing settings, and a system-assigned Managed Identity. Post-deployment validation also proved that the empty host has no App Settings, connection strings, application package, repository-defined deployment artifact, direct Managed Identity Key Vault role, Application Insights, or Log Analytics resource.
+
+The hosting gate still defaults to `false` in the repository template and was enabled only through the owner's private deployment parameters. `InMemory` remains the committed content-provider default, while `KeyVault` remains an explicit local override that uses the previously validated Azure CLI development identity. Creating the Web App identity did not authorize it: the identity has no Key Vault role. B4-D10 owns manual application publication with `Provider=InMemory` and cloud authentication/configuration; B4-D11 owns deployed credential composition, minimum Key Vault RBAC, `Provider=KeyVault`, and real deployed reads. Telemetry and CI/CD remain deferred.
 
 ## Application structure
 
@@ -69,14 +71,15 @@ After the application starts, open `https://localhost:7164`. `GET /` displays th
 - [Closed notes catalog and service boundary](docs/operations/closed-notes-catalog.md)
 - [Development Key Vault bootstrap](docs/operations/development-key-vault-bootstrap.md)
 - [Local Key Vault note provider](docs/operations/local-key-vault-provider.md)
+- [App Service hosting foundation](docs/operations/app-service-hosting-foundation.md)
 - [ADR 0001: Security architecture baseline](docs/adr/0001-security-architecture-baseline.md)
 - [ADR 0002: Microsoft Entra ID development identity](docs/adr/0002-entra-development-identity.md)
 - [ADR 0003: Development Key Vault RBAC](docs/adr/0003-development-key-vault-rbac.md)
 
 ## Deferred capabilities
 
-- Managed Identity
-- Application identity Azure RBAC
+- App Service application publishing and configuration
+- Managed Identity Key Vault authorization and deployed credential composition
 - Application Insights
 - CI/CD
 

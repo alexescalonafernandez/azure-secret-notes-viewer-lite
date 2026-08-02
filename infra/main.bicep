@@ -9,6 +9,15 @@ param keyVaultName string
 @description('Whether to persist the final Key Vault Secrets User assignment for the development user.')
 param assignDevelopmentReaderRole bool = false
 
+@description('Whether to provision the B4-D9 App Service hosting foundation.')
+param provisionAppServiceHosting bool = false
+
+@description('Name of the Linux App Service Plan. Required when App Service hosting is enabled.')
+param appServicePlanName string = ''
+
+@description('Globally unique name of the Linux Web App. Required when App Service hosting is enabled.')
+param webAppName string = ''
+
 @allowed([
   'westeurope'
 ])
@@ -53,4 +62,28 @@ module keyVaultReaderRole 'modules/key-vault-reader-role.bicep' = if (assignDeve
   dependsOn: [
     keyVault
   ]
+}
+
+module appServicePlan 'modules/app-service-plan.bicep' = if (provisionAppServiceHosting) {
+  name: 'development-app-service-plan'
+  scope: resourceGroup(resourceGroupName)
+  params: {
+    appServicePlanName: appServicePlanName
+    location: location
+    tags: tags
+  }
+  dependsOn: [
+    developmentResourceGroup
+  ]
+}
+
+module webApp 'modules/web-app.bicep' = if (provisionAppServiceHosting) {
+  name: 'development-web-app'
+  scope: resourceGroup(resourceGroupName)
+  params: {
+    webAppName: webAppName
+    appServicePlanId: appServicePlan!.outputs.planResourceId
+    location: location
+    tags: tags
+  }
 }

@@ -2,7 +2,7 @@
 
 ## Status and boundaries
 
-B4-D8 repository implementation, Azure-free validation, and owner-run interactive validation against the existing development Key Vault are complete. The milestone is ready for pull-request review but is not merged. The procedure below remains the reusable private validation runbook.
+B4-D8 repository implementation, Azure-free validation, and owner-run interactive validation against the existing development Key Vault are complete and merged. The procedure below remains the reusable private validation runbook.
 
 `InMemory` is the committed default. Selecting `KeyVault` is an explicit local override with no fallback. Startup then validates one HTTPS vault URI and exactly three distinct physical secret names. The code-owned mapping is closed:
 
@@ -16,7 +16,7 @@ NoteId.Recovery    → KeyVault:SecretNames:Recovery
 
 Local Key Vault mode uses `AzureCliCredential` only. It must run with the same Azure CLI identity that received and validated the B4-D7 vault-scoped `Key Vault Secrets User` assignment. The Microsoft Entra browser user, browser token, local web-app client secret, and `SecretNotes.Reader` role are not Key Vault credentials or RBAC grants.
 
-App Service, system-assigned Managed Identity, its RBAC assignment, and deployed credential composition remain deferred.
+B4-D9 adds the gated repository definition for an empty App Service and its system-assigned Managed Identity, with owner-run Azure validation still pending. Application publishing, the identity's Key Vault RBAC assignment, and deployed credential composition remain deferred.
 
 ## Configure private local values
 
