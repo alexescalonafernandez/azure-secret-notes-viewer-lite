@@ -8,13 +8,16 @@ $PSNativeCommandUseErrorActionPreference = $false
 $parameterFile = 'infra/environments/development.bicepparam'
 
 function ConvertFrom-SanitizedJson {
-    param([Parameter(Mandatory)][string] $Json)
+    param(
+        [Parameter(Mandatory)][string] $Json,
+        [Parameter(Mandatory)][string] $FailureReason
+    )
 
     try {
         return $Json | ConvertFrom-Json -DateKind String
     }
     catch {
-        throw 'local-build-output-invalid'
+        throw $FailureReason
     }
 }
 
@@ -24,12 +27,22 @@ function Get-CompiledParameterValue {
         [Parameter(Mandatory)][string] $Name
     )
 
-    $parameter = $Document.parameters.PSObject.Properties[$Name]
-    if ($null -eq $parameter -or $null -eq $parameter.Value.PSObject.Properties['value']) {
+    $parametersProperty = $Document.PSObject.Properties['parameters']
+    if ($null -eq $parametersProperty -or $null -eq $parametersProperty.Value) {
+        throw 'compiled-parameters-invalid'
+    }
+
+    $parameter = $parametersProperty.Value.PSObject.Properties[$Name]
+    if ($null -eq $parameter -or $null -eq $parameter.Value) {
         throw 'hosting-parameters-invalid'
     }
 
-    return $parameter.Value.value
+    $valueProperty = $parameter.Value.PSObject.Properties['value']
+    if ($null -eq $valueProperty) {
+        throw 'hosting-parameters-invalid'
+    }
+
+    return $valueProperty.Value
 }
 
 if (-not (Test-Path -LiteralPath $parameterFile)) { throw 'local-parameter-file-missing' }
@@ -56,12 +69,44 @@ Write-Output 'identity-context-valid'
 
 $mainTemplateLines = @(& az bicep build --file infra/main.bicep --stdout 2>$null)
 if ($LASTEXITCODE -ne 0) { throw 'bicep-build-failed' }
-$mainTemplate = ConvertFrom-SanitizedJson -Json ($mainTemplateLines -join [Environment]::NewLine)
+$mainTemplate = ConvertFrom-SanitizedJson `
+    -Json ($mainTemplateLines -join [Environment]::NewLine) `
+    -FailureReason 'local-build-output-invalid'
 Write-Output 'bicep-build-valid'
 
-$parameterDocumentLines = @(& az bicep build-params --file $parameterFile --stdout 2>$null)
+$buildParamsEnvelopeLines = @(& az bicep build-params --file $parameterFile --stdout 2>$null)
 if ($LASTEXITCODE -ne 0) { throw 'bicepparam-build-failed' }
-$parameterDocument = ConvertFrom-SanitizedJson -Json ($parameterDocumentLines -join [Environment]::NewLine)
+$buildParamsEnvelope = ConvertFrom-SanitizedJson `
+    -Json ($buildParamsEnvelopeLines -join [Environment]::NewLine) `
+    -FailureReason 'bicepparam-envelope-invalid'
+if ($null -eq $buildParamsEnvelope) { throw 'bicepparam-envelope-invalid' }
+
+$parametersJsonProperty = $buildParamsEnvelope.PSObject.Properties['parametersJson']
+$templateJsonProperty = $buildParamsEnvelope.PSObject.Properties['templateJson']
+if (
+    $null -eq $parametersJsonProperty -or
+    [string]::IsNullOrWhiteSpace([string] $parametersJsonProperty.Value) -or
+    $null -eq $templateJsonProperty -or
+    [string]::IsNullOrWhiteSpace([string] $templateJsonProperty.Value)
+) { throw 'bicepparam-envelope-invalid' }
+
+$compiledParametersDocument = ConvertFrom-SanitizedJson `
+    -Json ([string] $parametersJsonProperty.Value) `
+    -FailureReason 'compiled-parameters-json-invalid'
+$compiledTemplateDocument = ConvertFrom-SanitizedJson `
+    -Json ([string] $templateJsonProperty.Value) `
+    -FailureReason 'compiled-template-json-invalid'
+
+if ($null -eq $compiledParametersDocument) { throw 'compiled-parameters-invalid' }
+$compiledParametersRoot = $compiledParametersDocument.PSObject.Properties['parameters']
+if ($null -eq $compiledParametersRoot -or $null -eq $compiledParametersRoot.Value) {
+    throw 'compiled-parameters-invalid'
+}
+if ($null -eq $compiledTemplateDocument) { throw 'compiled-template-invalid' }
+$compiledTemplateRoot = $compiledTemplateDocument.PSObject.Properties['parameters']
+if ($null -eq $compiledTemplateRoot -or $null -eq $compiledTemplateRoot.Value) {
+    throw 'compiled-template-invalid'
+}
 Write-Output 'bicepparam-build-valid'
 
 $locationDefinition = $mainTemplate.parameters.PSObject.Properties['location']
@@ -72,12 +117,18 @@ if (
     $locationDefinition.Value.allowedValues[0] -cne 'westeurope'
 ) { throw 'hosting-location-invalid' }
 
-$hostingGate = Get-CompiledParameterValue -Document $parameterDocument -Name 'provisionAppServiceHosting'
+$hostingGate = Get-CompiledParameterValue `
+    -Document $compiledParametersDocument `
+    -Name 'provisionAppServiceHosting'
 if ($hostingGate -ne $true) { throw 'hosting-gate-disabled' }
 Write-Output 'hosting-gate-valid'
 
-$appServicePlanName = [string](Get-CompiledParameterValue -Document $parameterDocument -Name 'appServicePlanName')
-$webAppName = [string](Get-CompiledParameterValue -Document $parameterDocument -Name 'webAppName')
+$appServicePlanName = [string](Get-CompiledParameterValue `
+    -Document $compiledParametersDocument `
+    -Name 'appServicePlanName')
+$webAppName = [string](Get-CompiledParameterValue `
+    -Document $compiledParametersDocument `
+    -Name 'webAppName')
 if (
     $appServicePlanName -notmatch '^[A-Za-z0-9][A-Za-z0-9-]{0,38}[A-Za-z0-9]$' -or
     $webAppName -notmatch '^[A-Za-z0-9](?:[A-Za-z0-9-]{0,58}[A-Za-z0-9])$'
@@ -86,7 +137,9 @@ Write-Output 'hosting-parameters-valid'
 
 $planTemplateLines = @(& az bicep build --file infra/modules/app-service-plan.bicep --stdout 2>$null)
 if ($LASTEXITCODE -ne 0) { throw 'app-service-plan-build-failed' }
-$planTemplate = ConvertFrom-SanitizedJson -Json ($planTemplateLines -join [Environment]::NewLine)
+$planTemplate = ConvertFrom-SanitizedJson `
+    -Json ($planTemplateLines -join [Environment]::NewLine) `
+    -FailureReason 'local-build-output-invalid'
 $planResource = @($planTemplate.resources)[0]
 if (
     $planResource.type -cne 'Microsoft.Web/serverfarms' -or

@@ -8,13 +8,16 @@ $PSNativeCommandUseErrorActionPreference = $false
 $parameterFile = 'infra/environments/development.bicepparam'
 
 function ConvertFrom-SanitizedJson {
-    param([Parameter(Mandatory)][string] $Json)
+    param(
+        [Parameter(Mandatory)][string] $Json,
+        [Parameter(Mandatory)][string] $FailureReason
+    )
 
     try {
         return $Json | ConvertFrom-Json -DateKind String
     }
     catch {
-        throw 'azure-response-invalid'
+        throw $FailureReason
     }
 }
 
@@ -23,7 +26,9 @@ function Invoke-AzureJson {
 
     $lines = @(& $Command 2>$null)
     if ($LASTEXITCODE -ne 0) { throw 'azure-read-failed' }
-    return ConvertFrom-SanitizedJson -Json ($lines -join [Environment]::NewLine)
+    return ConvertFrom-SanitizedJson `
+        -Json ($lines -join [Environment]::NewLine) `
+        -FailureReason 'azure-response-invalid'
 }
 
 function Invoke-AzureCount {
@@ -53,25 +58,75 @@ function Get-CompiledParameterValue {
         [Parameter(Mandatory)][string] $Name
     )
 
-    $parameter = $Document.parameters.PSObject.Properties[$Name]
-    if ($null -eq $parameter -or $null -eq $parameter.Value.PSObject.Properties['value']) {
+    $parametersProperty = $Document.PSObject.Properties['parameters']
+    if ($null -eq $parametersProperty -or $null -eq $parametersProperty.Value) {
+        throw 'compiled-parameters-invalid'
+    }
+
+    $parameter = $parametersProperty.Value.PSObject.Properties[$Name]
+    if ($null -eq $parameter -or $null -eq $parameter.Value) {
         throw 'hosting-parameters-invalid'
     }
-    return $parameter.Value.value
+
+    $valueProperty = $parameter.Value.PSObject.Properties['value']
+    if ($null -eq $valueProperty) {
+        throw 'hosting-parameters-invalid'
+    }
+    return $valueProperty.Value
 }
 
 if (-not (Test-Path -LiteralPath $parameterFile)) { throw 'local-parameter-file-missing' }
 if ($null -eq (Get-Command az -ErrorAction SilentlyContinue)) { throw 'azure-cli-unavailable' }
 
-$parameterLines = @(& az bicep build-params --file $parameterFile --stdout 2>$null)
+$buildParamsEnvelopeLines = @(& az bicep build-params --file $parameterFile --stdout 2>$null)
 if ($LASTEXITCODE -ne 0) { throw 'bicepparam-build-failed' }
-$parameters = ConvertFrom-SanitizedJson -Json ($parameterLines -join [Environment]::NewLine)
+$buildParamsEnvelope = ConvertFrom-SanitizedJson `
+    -Json ($buildParamsEnvelopeLines -join [Environment]::NewLine) `
+    -FailureReason 'bicepparam-envelope-invalid'
+if ($null -eq $buildParamsEnvelope) { throw 'bicepparam-envelope-invalid' }
 
-$resourceGroupName = [string](Get-CompiledParameterValue -Document $parameters -Name 'resourceGroupName')
-$keyVaultName = [string](Get-CompiledParameterValue -Document $parameters -Name 'keyVaultName')
-$appServicePlanName = [string](Get-CompiledParameterValue -Document $parameters -Name 'appServicePlanName')
-$webAppName = [string](Get-CompiledParameterValue -Document $parameters -Name 'webAppName')
-$hostingGate = Get-CompiledParameterValue -Document $parameters -Name 'provisionAppServiceHosting'
+$parametersJsonProperty = $buildParamsEnvelope.PSObject.Properties['parametersJson']
+$templateJsonProperty = $buildParamsEnvelope.PSObject.Properties['templateJson']
+if (
+    $null -eq $parametersJsonProperty -or
+    [string]::IsNullOrWhiteSpace([string] $parametersJsonProperty.Value) -or
+    $null -eq $templateJsonProperty -or
+    [string]::IsNullOrWhiteSpace([string] $templateJsonProperty.Value)
+) { throw 'bicepparam-envelope-invalid' }
+
+$compiledParametersDocument = ConvertFrom-SanitizedJson `
+    -Json ([string] $parametersJsonProperty.Value) `
+    -FailureReason 'compiled-parameters-json-invalid'
+$compiledTemplateDocument = ConvertFrom-SanitizedJson `
+    -Json ([string] $templateJsonProperty.Value) `
+    -FailureReason 'compiled-template-json-invalid'
+
+if ($null -eq $compiledParametersDocument) { throw 'compiled-parameters-invalid' }
+$compiledParametersRoot = $compiledParametersDocument.PSObject.Properties['parameters']
+if ($null -eq $compiledParametersRoot -or $null -eq $compiledParametersRoot.Value) {
+    throw 'compiled-parameters-invalid'
+}
+if ($null -eq $compiledTemplateDocument) { throw 'compiled-template-invalid' }
+$compiledTemplateRoot = $compiledTemplateDocument.PSObject.Properties['parameters']
+if ($null -eq $compiledTemplateRoot -or $null -eq $compiledTemplateRoot.Value) {
+    throw 'compiled-template-invalid'
+}
+
+$resourceGroupName = [string](Get-CompiledParameterValue `
+    -Document $compiledParametersDocument `
+    -Name 'resourceGroupName')
+$keyVaultName = [string](Get-CompiledParameterValue `
+    -Document $compiledParametersDocument `
+    -Name 'keyVaultName')
+$appServicePlanName = [string](Get-CompiledParameterValue `
+    -Document $compiledParametersDocument `
+    -Name 'appServicePlanName')
+$webAppName = [string](Get-CompiledParameterValue `
+    -Document $compiledParametersDocument `
+    -Name 'webAppName')
+$hostingGate = Get-CompiledParameterValue `
+    -Document $compiledParametersDocument `
+    -Name 'provisionAppServiceHosting'
 if ($hostingGate -ne $true) { throw 'hosting-gate-disabled' }
 
 $subscriptionId = (& az account show --query id --output tsv --only-show-errors 2>$null)
