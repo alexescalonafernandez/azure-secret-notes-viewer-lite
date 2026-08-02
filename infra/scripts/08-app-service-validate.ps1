@@ -31,6 +31,35 @@ function Invoke-AzureJson {
         -FailureReason 'azure-response-invalid'
 }
 
+function Invoke-AzureJsonArray {
+    param(
+        [Parameter(Mandatory)][scriptblock] $Command,
+        [Parameter(Mandatory)][string] $FailureReason
+    )
+
+    $lines = @(& $Command 2>$null)
+    if ($LASTEXITCODE -ne 0) { throw 'azure-read-failed' }
+
+    $json = $lines -join [Environment]::NewLine
+    if ([string]::IsNullOrWhiteSpace($json)) { throw $FailureReason }
+
+    try {
+        $result = ConvertFrom-Json `
+            -InputObject $json `
+            -DateKind String `
+            -NoEnumerate
+    }
+    catch {
+        throw $FailureReason
+    }
+
+    if ($null -eq $result -or $result -isnot [System.Array]) {
+        throw $FailureReason
+    }
+
+    Write-Output -NoEnumerate $result
+}
+
 function Get-CompiledParameterValue {
     param(
         [Parameter(Mandatory)][psobject] $Document,
@@ -299,7 +328,9 @@ Write-Output 'system-assigned-identity-valid'
 $vault = Invoke-AzureJson {
     & az keyvault show --resource-group $resourceGroupName --name $keyVaultName --subscription $subscriptionId --query '{id:id}' --output json --only-show-errors
 }
-$vaultAssignments = Invoke-AzureJson {
+$vaultAssignments = Invoke-AzureJsonArray `
+    -FailureReason 'role-assignment-response-invalid' `
+    -Command {
     & az role assignment list `
         --scope $vault.id `
         --assignee-object-id $webApp.principalId `
@@ -310,50 +341,83 @@ $vaultAssignments = Invoke-AzureJson {
         --output json `
         --only-show-errors
 }
+
+foreach ($vaultAssignment in $vaultAssignments) {
+    if ($null -eq $vaultAssignment) {
+        throw 'role-assignment-response-invalid'
+    }
+
+    $scopeProperty = $vaultAssignment.PSObject.Properties['scope']
+    if (
+        $null -eq $scopeProperty -or
+        $scopeProperty.Value -isnot [string] -or
+        [string]::IsNullOrWhiteSpace([string] $scopeProperty.Value)
+    ) { throw 'role-assignment-response-invalid' }
+}
+
 $directVaultAssignments = @($vaultAssignments | Where-Object {
     [string]::Equals([string] $_.scope, [string] $vault.id, [StringComparison]::OrdinalIgnoreCase)
 })
 if ($directVaultAssignments.Count -ne 0) { throw 'key-vault-rbac-present' }
 Write-Output 'key-vault-rbac-absent'
 
-$appSettingNames = Invoke-AzureJson {
+$appSettingSummaries = Invoke-AzureJsonArray `
+    -FailureReason 'app-settings-response-invalid' `
+    -Command {
     & az webapp config appsettings list `
         --resource-group $resourceGroupName `
         --name $webAppName `
         --subscription $subscriptionId `
-        --query '[].name' `
+        --query '[].{name:name}' `
         --output json `
         --only-show-errors
 }
-$appSettingsCount = @(
-    $appSettingNames | Where-Object { $null -ne $_ }
-).Count
+$appSettingsCount = $appSettingSummaries.Count
 
-$connectionStringNames = Invoke-AzureJson {
+$connectionStringSummaries = Invoke-AzureJsonArray `
+    -FailureReason 'connection-strings-response-invalid' `
+    -Command {
     & az webapp config connection-string list `
         --resource-group $resourceGroupName `
         --name $webAppName `
         --subscription $subscriptionId `
-        --query '[].name' `
+        --query '[].{name:name}' `
         --output json `
         --only-show-errors
 }
-$connectionStringCount = @(
-    $connectionStringNames | Where-Object { $null -ne $_ }
-).Count
+$connectionStringCount = $connectionStringSummaries.Count
 if (
     $appSettingsCount -ne 0 -or
     $connectionStringCount -ne 0
 ) { throw 'private-settings-present' }
 Write-Output 'private-settings-absent'
 
-$resourceSummaries = Invoke-AzureJson {
+$resourceSummaries = Invoke-AzureJsonArray `
+    -FailureReason 'resource-list-response-invalid' `
+    -Command {
     & az resource list `
         --resource-group $resourceGroupName `
         --subscription $subscriptionId `
         --query '[].{id:id,type:type}' `
         --output json `
         --only-show-errors
+}
+
+foreach ($resourceSummary in $resourceSummaries) {
+    if ($null -eq $resourceSummary) {
+        throw 'resource-list-response-invalid'
+    }
+
+    $resourceIdProperty = $resourceSummary.PSObject.Properties['id']
+    $resourceTypeProperty = $resourceSummary.PSObject.Properties['type']
+    if (
+        $null -eq $resourceIdProperty -or
+        $null -eq $resourceTypeProperty -or
+        $resourceIdProperty.Value -isnot [string] -or
+        $resourceTypeProperty.Value -isnot [string] -or
+        [string]::IsNullOrWhiteSpace([string] $resourceIdProperty.Value) -or
+        [string]::IsNullOrWhiteSpace([string] $resourceTypeProperty.Value)
+    ) { throw 'resource-list-response-invalid' }
 }
 
 $webAppChildPrefix = '{0}/' -f ([string] $webApp.id).TrimEnd('/')
@@ -389,7 +453,9 @@ $deploymentArtifacts = @(
 )
 $deploymentArtifactCount = $deploymentArtifacts.Count
 
-$deploymentRecords = Invoke-AzureJson {
+$deploymentRecords = Invoke-AzureJsonArray `
+    -FailureReason 'deployment-records-response-invalid' `
+    -Command {
     & az webapp log deployment list `
         --resource-group $resourceGroupName `
         --name $webAppName `
@@ -398,9 +464,7 @@ $deploymentRecords = Invoke-AzureJson {
         --output json `
         --only-show-errors
 }
-$deploymentRecordCount = @(
-    $deploymentRecords | Where-Object { $null -ne $_ }
-).Count
+$deploymentRecordCount = $deploymentRecords.Count
 if (
     $deploymentRecordCount -ne 0 -or
     $deploymentArtifactCount -ne 0 -or
@@ -409,15 +473,22 @@ if (
 ) { throw 'application-package-present' }
 Write-Output 'application-package-absent'
 
-$telemetryResources = Invoke-AzureJson {
-    & az resource list `
-        --resource-group $resourceGroupName `
-        --subscription $subscriptionId `
-        --query "[?type == 'Microsoft.Insights/components' || type == 'Microsoft.OperationalInsights/workspaces'].{type:type}" `
-        --output json `
-        --only-show-errors
-}
-if (@($telemetryResources).Count -ne 0) { throw 'telemetry-resources-present' }
+$telemetryResources = @(
+    $resourceSummaries |
+        Where-Object {
+            [string]::Equals(
+                [string] $_.type,
+                'Microsoft.Insights/components',
+                [StringComparison]::OrdinalIgnoreCase
+            ) -or
+            [string]::Equals(
+                [string] $_.type,
+                'Microsoft.OperationalInsights/workspaces',
+                [StringComparison]::OrdinalIgnoreCase
+            )
+        }
+)
+if ($telemetryResources.Count -ne 0) { throw 'telemetry-resources-present' }
 Write-Output 'telemetry-resources-absent'
 
 Write-Output 'app-service-validation-valid'
