@@ -31,27 +31,6 @@ function Invoke-AzureJson {
         -FailureReason 'azure-response-invalid'
 }
 
-function Invoke-AzureCount {
-    param([Parameter(Mandatory)][scriptblock] $Command)
-
-    $lines = @(& $Command 2>$null)
-    if ($LASTEXITCODE -ne 0) { throw 'azure-read-failed' }
-    $rawCount = ($lines -join '').Trim()
-    [long] $count = 0
-    if (
-        [string]::IsNullOrWhiteSpace($rawCount) -or
-        -not [long]::TryParse(
-            $rawCount,
-            [Globalization.NumberStyles]::None,
-            [Globalization.CultureInfo]::InvariantCulture,
-            [ref] $count
-        ) -or
-        $count -lt 0
-    ) { throw 'azure-count-invalid' }
-
-    return $count
-}
-
 function Get-CompiledParameterValue {
     param(
         [Parameter(Mandatory)][psobject] $Document,
@@ -129,11 +108,22 @@ $hostingGate = Get-CompiledParameterValue `
     -Name 'provisionAppServiceHosting'
 if ($hostingGate -ne $true) { throw 'hosting-gate-disabled' }
 
-$subscriptionId = (& az account show --query id --output tsv --only-show-errors 2>$null)
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($subscriptionId)) {
+$subscriptionIdLines = @(& az account show --query id --output json --only-show-errors 2>$null)
+if (
+    $LASTEXITCODE -ne 0 -or
+    [string]::IsNullOrWhiteSpace(
+        $subscriptionIdLines -join [Environment]::NewLine
+    )
+) {
     throw 'subscription-context-invalid'
 }
-$subscriptionId = $subscriptionId.Trim()
+$subscriptionId = ConvertFrom-SanitizedJson `
+    -Json ($subscriptionIdLines -join [Environment]::NewLine) `
+    -FailureReason 'subscription-context-invalid'
+if ([string]::IsNullOrWhiteSpace([string] $subscriptionId)) {
+    throw 'subscription-context-invalid'
+}
+$subscriptionId = ([string] $subscriptionId).Trim()
 
 $plan = Invoke-AzureJson {
     & az appservice plan show `
@@ -326,35 +316,91 @@ $directVaultAssignments = @($vaultAssignments | Where-Object {
 if ($directVaultAssignments.Count -ne 0) { throw 'key-vault-rbac-present' }
 Write-Output 'key-vault-rbac-absent'
 
-$appSettingsCount = Invoke-AzureCount {
-    & az webapp config appsettings list --resource-group $resourceGroupName --name $webAppName --subscription $subscriptionId --query 'length(@)' --output tsv --only-show-errors
+$appSettingNames = Invoke-AzureJson {
+    & az webapp config appsettings list `
+        --resource-group $resourceGroupName `
+        --name $webAppName `
+        --subscription $subscriptionId `
+        --query '[].name' `
+        --output json `
+        --only-show-errors
 }
-$connectionStringCount = Invoke-AzureCount {
-    & az webapp config connection-string list --resource-group $resourceGroupName --name $webAppName --subscription $subscriptionId --query 'length(@)' --output tsv --only-show-errors
+$appSettingsCount = @(
+    $appSettingNames | Where-Object { $null -ne $_ }
+).Count
+
+$connectionStringNames = Invoke-AzureJson {
+    & az webapp config connection-string list `
+        --resource-group $resourceGroupName `
+        --name $webAppName `
+        --subscription $subscriptionId `
+        --query '[].name' `
+        --output json `
+        --only-show-errors
 }
+$connectionStringCount = @(
+    $connectionStringNames | Where-Object { $null -ne $_ }
+).Count
 if (
     $appSettingsCount -ne 0 -or
     $connectionStringCount -ne 0
 ) { throw 'private-settings-present' }
 Write-Output 'private-settings-absent'
 
-$deploymentArtifactCount = Invoke-AzureCount {
+$resourceSummaries = Invoke-AzureJson {
     & az resource list `
         --resource-group $resourceGroupName `
         --subscription $subscriptionId `
-        --query "length([?starts_with(id, '$($webApp.id)/') && (type == 'Microsoft.Web/sites/deployments' || type == 'Microsoft.Web/sites/sourcecontrols' || type == 'Microsoft.Web/sites/siteextensions')])" `
-        --output tsv `
+        --query '[].{id:id,type:type}' `
+        --output json `
         --only-show-errors
 }
-$deploymentRecordCount = Invoke-AzureCount {
+
+$webAppChildPrefix = '{0}/' -f ([string] $webApp.id).TrimEnd('/')
+$deploymentArtifacts = @(
+    $resourceSummaries |
+        Where-Object {
+            $resourceId = [string] $_.id
+            $resourceType = [string] $_.type
+            $isDeploymentArtifactType =
+                [string]::Equals(
+                    $resourceType,
+                    'Microsoft.Web/sites/deployments',
+                    [StringComparison]::OrdinalIgnoreCase
+                ) -or
+                [string]::Equals(
+                    $resourceType,
+                    'Microsoft.Web/sites/sourcecontrols',
+                    [StringComparison]::OrdinalIgnoreCase
+                ) -or
+                [string]::Equals(
+                    $resourceType,
+                    'Microsoft.Web/sites/siteextensions',
+                    [StringComparison]::OrdinalIgnoreCase
+                )
+
+            $isDeploymentArtifactType -and
+                -not [string]::IsNullOrWhiteSpace($resourceId) -and
+                $resourceId.StartsWith(
+                    $webAppChildPrefix,
+                    [StringComparison]::OrdinalIgnoreCase
+                )
+        }
+)
+$deploymentArtifactCount = $deploymentArtifacts.Count
+
+$deploymentRecords = Invoke-AzureJson {
     & az webapp log deployment list `
         --resource-group $resourceGroupName `
         --name $webAppName `
         --subscription $subscriptionId `
-        --query 'length(@)' `
-        --output tsv `
+        --query '[].{id:id}' `
+        --output json `
         --only-show-errors
 }
+$deploymentRecordCount = @(
+    $deploymentRecords | Where-Object { $null -ne $_ }
+).Count
 if (
     $deploymentRecordCount -ne 0 -or
     $deploymentArtifactCount -ne 0 -or
