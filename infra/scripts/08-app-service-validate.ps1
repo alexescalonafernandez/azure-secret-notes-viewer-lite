@@ -183,16 +183,83 @@ $webApp = Invoke-AzureJson {
         --resource-group $resourceGroupName `
         --name $webAppName `
         --subscription $subscriptionId `
-        --query '{id:id,kind:kind,serverFarmId:serverFarmId,httpsOnly:httpsOnly,identityType:identity.type,principalId:identity.principalId,keyVaultReferenceIdentity:keyVaultReferenceIdentity}' `
+        --query '{id:id,kind:kind,httpsOnly:httpsOnly,identityType:identity.type,principalId:identity.principalId}' `
         --output json `
         --only-show-errors
 }
 if (
     [string]::IsNullOrWhiteSpace([string] $webApp.id) -or
-    $webApp.kind -notmatch '(?i)(^|,)linux($|,)' -or
-    -not [string]::Equals([string] $webApp.serverFarmId, [string] $plan.id, [StringComparison]::OrdinalIgnoreCase)
+    $webApp.kind -notmatch '(?i)(^|,)app($|,)' -or
+    $webApp.kind -notmatch '(?i)(^|,)linux($|,)'
 ) { throw 'linux-web-app-invalid' }
+
+$webAppArmState = Invoke-AzureJson {
+    & az resource show `
+        --ids $webApp.id `
+        --api-version 2025-03-01 `
+        --subscription $subscriptionId `
+        --query '{type:type,serverFarmId:properties.serverFarmId,publicNetworkAccess:properties.publicNetworkAccess,clientAffinityEnabled:properties.clientAffinityEnabled,keyVaultReferenceIdentity:properties.keyVaultReferenceIdentity}' `
+        --output json `
+        --only-show-errors
+}
+if ($null -eq $webAppArmState) { throw 'web-app-arm-state-invalid' }
+
+$webAppTypeProperty = $webAppArmState.PSObject.Properties['type']
+$serverFarmIdProperty = $webAppArmState.PSObject.Properties['serverFarmId']
+$publicNetworkAccessProperty = $webAppArmState.PSObject.Properties['publicNetworkAccess']
+$clientAffinityProperty = $webAppArmState.PSObject.Properties['clientAffinityEnabled']
+$keyVaultReferenceIdentityProperty = $webAppArmState.PSObject.Properties['keyVaultReferenceIdentity']
+if (
+    $null -eq $webAppTypeProperty -or
+    $null -eq $serverFarmIdProperty -or
+    $null -eq $publicNetworkAccessProperty -or
+    $null -eq $clientAffinityProperty -or
+    $null -eq $keyVaultReferenceIdentityProperty -or
+    $webAppTypeProperty.Value -isnot [string] -or
+    -not [string]::Equals(
+        [string] $webAppTypeProperty.Value,
+        'Microsoft.Web/sites',
+        [StringComparison]::OrdinalIgnoreCase
+    )
+) { throw 'web-app-arm-state-invalid' }
+
+$serverFarmId = [string] $serverFarmIdProperty.Value
+if (
+    [string]::IsNullOrWhiteSpace($serverFarmId) -or
+    -not [string]::Equals(
+        $serverFarmId,
+        [string] $plan.id,
+        [StringComparison]::OrdinalIgnoreCase
+    )
+) { throw 'web-app-plan-association-invalid' }
+
+if (
+    $publicNetworkAccessProperty.Value -isnot [string] -or
+    -not [string]::Equals(
+        [string] $publicNetworkAccessProperty.Value,
+        'Enabled',
+        [StringComparison]::Ordinal
+    )
+) { throw 'public-network-access-invalid' }
+
+if (
+    $clientAffinityProperty.Value -isnot [bool] -or
+    $clientAffinityProperty.Value -ne $false
+) { throw 'client-affinity-invalid' }
+
+$keyVaultReferenceIdentity = [string] $keyVaultReferenceIdentityProperty.Value
+if (
+    -not [string]::IsNullOrWhiteSpace($keyVaultReferenceIdentity) -and
+    -not [string]::Equals(
+        $keyVaultReferenceIdentity,
+        'SystemAssigned',
+        [StringComparison]::Ordinal
+    )
+) { throw 'unexpected-key-vault-reference-identity' }
+
 Write-Output 'linux-web-app-valid'
+Write-Output 'public-network-access-valid'
+Write-Output 'client-affinity-disabled'
 
 $siteConfig = Invoke-AzureJson {
     & az webapp config show `
@@ -206,7 +273,9 @@ $siteConfig = Invoke-AzureJson {
 if ($siteConfig.linuxFxVersion -cne 'DOTNETCORE|10.0') { throw 'dotnet-runtime-invalid' }
 Write-Output 'dotnet-runtime-valid'
 
-if ($webApp.httpsOnly -ne $true) { throw 'https-only-invalid' }
+if ($webApp.httpsOnly -isnot [bool] -or $webApp.httpsOnly -ne $true) {
+    throw 'https-only-invalid'
+}
 Write-Output 'https-only-valid'
 
 if ($siteConfig.minTlsVersion -cne '1.2') { throw 'minimum-tls-invalid' }
@@ -265,8 +334,7 @@ $connectionStringCount = Invoke-AzureCount {
 }
 if (
     $appSettingsCount -ne 0 -or
-    $connectionStringCount -ne 0 -or
-    -not [string]::IsNullOrWhiteSpace([string] $webApp.keyVaultReferenceIdentity)
+    $connectionStringCount -ne 0
 ) { throw 'private-settings-present' }
 Write-Output 'private-settings-absent'
 
