@@ -28,13 +28,13 @@ The Lite version is a minimal portfolio workload: one ASP.NET Core Razor Pages w
 
 ## Current status
 
-`B4-D9 — Provision Minimal Linux App Service Hosting Foundation`
+`B4-D10A — GitHub OIDC Deployment Foundation`
 
 The committed application still selects `InMemoryNoteContentProvider`. An explicit `NoteContent:Provider=KeyVault` local override binds and validates one vault URI and exactly three physical names, then registers one reusable `SecretClient` with `AzureCliCredential`. The code-owned mapping accepts only the closed `NoteId` set, performs only active-version `GetSecretAsync` reads, never enumerates secrets, never falls back to in-memory content, and translates Azure request, credential, or unavailable-value failures to a fixed provider-neutral exception.
 
 B4-D7 infrastructure validation and B4-D8 local Key Vault provider validation are complete and merged. B4-D9 deployed and owner-validated one F1 / Free Linux App Service Plan and one empty .NET 10 Linux Web App with public network access enabled, client affinity disabled, hardened transport and publishing settings, and a system-assigned Managed Identity. Post-deployment validation also proved that the empty host has no App Settings, connection strings, application package, repository-defined deployment artifact, direct Managed Identity Key Vault role, Application Insights, or Log Analytics resource.
 
-The hosting gate still defaults to `false` in the repository template and was enabled only through the owner's private deployment parameters. `InMemory` remains the committed content-provider default, while `KeyVault` remains an explicit local override that uses the previously validated Azure CLI development identity. Creating the Web App identity did not authorize it: the identity has no Key Vault role. B4-D10 owns manual application publication with `Provider=InMemory` and cloud authentication/configuration; B4-D11 owns deployed credential composition, minimum Key Vault RBAC, `Provider=KeyVault`, and real deployed reads. Telemetry and CI/CD remain deferred.
+The B4-D10A repository foundation now prepares an owner-gated GitHub OIDC deployment identity, exact Web App-scoped `Website Contributor`, and a manual-only App Service deployment workflow. No Azure or Entra object, RBAC assignment, GitHub Environment, workflow run, or application deployment is claimed until the owner runs and validates those steps. The hosting gate still defaults to `false`; `InMemory` remains the committed provider. B4-D10B owns the separate cloud browser identity, runtime settings, publication evidence, and cloud authentication validation. B4-D11 owns deployed Key Vault RBAC and reads.
 
 ## Application structure
 
@@ -72,15 +72,17 @@ After the application starts, open `https://localhost:7164`. `GET /` displays th
 - [Development Key Vault bootstrap](docs/operations/development-key-vault-bootstrap.md)
 - [Local Key Vault note provider](docs/operations/local-key-vault-provider.md)
 - [App Service hosting foundation](docs/operations/app-service-hosting-foundation.md)
+- [GitHub Actions OIDC deployment foundation](docs/operations/github-actions-oidc-deployment.md)
 - [ADR 0001: Security architecture baseline](docs/adr/0001-security-architecture-baseline.md)
 - [ADR 0002: Microsoft Entra ID development identity](docs/adr/0002-entra-development-identity.md)
 - [ADR 0003: Development Key Vault RBAC](docs/adr/0003-development-key-vault-rbac.md)
 
 ## Deferred capabilities
 
-- App Service application publishing and configuration
+- Owner-run GitHub OIDC setup, Environment configuration, and application publication
+- Cloud browser-authentication identity and runtime configuration
 - Managed Identity Key Vault authorization and deployed credential composition
 - Application Insights
-- CI/CD
+- Automatic CI/CD deployment
 
 > **Security warning:** Never commit real secrets, credentials, tokens, tenant IDs, subscription IDs, client IDs, object IDs, physical secret names, resource identifiers, personal data, connection strings, or realistic secret values. Keep the real development parameter file local and ignored.

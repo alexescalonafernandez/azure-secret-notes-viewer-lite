@@ -1,0 +1,103 @@
+name: Deploy Web App
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AZURE_CORE_OUTPUT: none
+
+jobs:
+  deploy:
+    name: Deploy Web App
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mask deployment metadata
+        shell: bash
+        env:
+          WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+          DOTNET_VERSION: ${{ vars.DOTNET_VERSION }}
+          PROJECT_PATH: ${{ vars.PROJECT_PATH }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          hostname="${WEBAPP_NAME}.azurewebsites.net"
+          health_url="https://${hostname}/health"
+          echo "::add-mask::$WEBAPP_NAME"
+          echo "::add-mask::$hostname"
+          echo "::add-mask::$health_url"
+          echo "::add-mask::$AZURE_CLIENT_ID"
+          echo "::add-mask::$AZURE_TENANT_ID"
+          echo "::add-mask::$AZURE_SUBSCRIPTION_ID"
+
+          if [ -z "$WEBAPP_NAME" ] || [ -z "$AZURE_CLIENT_ID" ] || [ -z "$AZURE_TENANT_ID" ] || [ -z "$AZURE_SUBSCRIPTION_ID" ]; then
+            echo "deployment-inputs-invalid"
+            exit 1
+          fi
+
+          if [ "$DOTNET_VERSION" != "10.0.x" ] || [ "$PROJECT_PATH" != "src/SecretNotesViewer.Web/SecretNotesViewer.Web.csproj" ]; then
+            echo "deployment-inputs-invalid"
+            exit 1
+          fi
+
+          echo "deployment-inputs-valid"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ vars.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore SecretNotesViewer.slnx
+
+      - name: Build
+        run: dotnet build SecretNotesViewer.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test SecretNotesViewer.slnx --configuration Release --no-build
+
+      - name: Publish Web project
+        run: dotnet publish "${{ vars.PROJECT_PATH }}" --configuration Release --no-build --output ./publish
+
+      - name: Azure login through OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          package: ./publish
+
+      - name: Validate public health endpoint
+        shell: bash
+        env:
+          WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
+        run: |
+          health_url="https://${WEBAPP_NAME}.azurewebsites.net/health"
+          for attempt in {1..12}; do
+            if status_code="$(curl --silent --output /dev/null --connect-timeout 5 --max-time 15 --write-out '%{http_code}' "$health_url")" && [ "$status_code" = "200" ]; then
+              echo "public-health-valid"
+              exit 0
+            fi
+
+            if [ "$attempt" -lt 12 ]; then
+              sleep 10
+            fi
+          done
+
+          echo "public-health-validation-failed"
+          exit 1

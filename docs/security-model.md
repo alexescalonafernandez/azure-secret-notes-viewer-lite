@@ -20,7 +20,7 @@ Only synthetic demonstration secrets may be used later. Tenant IDs and applicati
 - **User with `SecretNotes.Reader`:** Has a valid single-tenant Entra ID session and the application role required for `/Notes`.
 - **App Service Managed Identity:** The system-assigned identity created with the deployed empty Web App. It remains unauthorized in B4-D9 and becomes a Key Vault caller only after B4-D11 grants minimum RBAC and enables deployed Key Vault composition.
 - **Local developer identity:** Used through `AzureCliCredential` for explicit local Key Vault mode and owner-run validation; it must not be assumed to represent production workload permissions.
-- **Future CI/CD identity:** Deferred identity for deployment automation, potentially GitHub Actions OIDC in a later milestone.
+- **GitHub deployment identity:** Dedicated B4-D10A App Registration and Service Principal prepared for GitHub OIDC. Owner-run creation and validation remain pending; it must never be the local/cloud browser application or the Web App Managed Identity.
 - **Synthetic integration-test principal:** A non-identifying test-only principal used to exercise authorization branches without changing a real Entra user or assignment.
 
 ## `SecretNotes.Reader` app role
@@ -130,9 +130,9 @@ The matrix distinguishes the current implemented application authorization and o
 | Authenticated user without app role | Yes | No; denied | No | None | Implemented and covered by authorization tests; authentication alone is insufficient. |
 | Authenticated user with unrelated app role | Yes | No; denied | No | None | Implemented and covered by authorization tests; unrelated roles grant no access. |
 | User with `SecretNotes.Reader` | Yes | Yes; fixed synthetic catalog only | No | None through this app role | Implemented; the app role permits application feature use only. |
-| App Service Managed Identity | No human session | Not applicable | Not in B4-D9 or B4-D10 | None until B4-D11 | Deployed with the empty Web App; B4-D10 publishes with `Provider=InMemory`, and B4-D11 owns Key Vault authorization. |
+| App Service Managed Identity | No human session | Not applicable | Not in B4-D9 or B4-D10 | None until B4-D11 | Deployed with the empty Web App; B4-D10B will publish with `Provider=InMemory`, and B4-D11 owns Key Vault authorization. |
 | Local developer identity | Yes when local authentication is configured | Depends on assigned app role | Yes only in explicitly selected local Key Vault mode through `AzureCliCredential` | Final direct `Key Vault Secrets User` at vault scope; temporary Officer removed | B4-D7 validation and B4-D8 owner-run local application validation completed; this remains a development-only exception. |
-| Future CI/CD identity | No | Not applicable | No for runtime reads | Deployment permissions only, deferred | GitHub Actions OIDC is deferred. |
+| GitHub deployment identity | No | Not applicable | No | `Website Contributor` at the exact Web App only | Repository foundation prepared in B4-D10A; owner-run Azure/GitHub setup and validation are not yet claimed. |
 
 ## Secure error-handling expectations
 
@@ -225,9 +225,13 @@ Completed owner-run validation for B4-D9:
 - The system-assigned Managed Identity exists but has no direct Key Vault RBAC assignment.
 - No App Settings, connection strings, application package, repository-defined deployment artifact, Application Insights resource, or Log Analytics workspace exists for this milestone.
 
+Prepared but still awaiting owner-run cloud execution and evidence:
+
+- B4-D10A dedicated deployment application, Service Principal, exact GitHub Environment federated credential, exact Web App-scoped `Website Contributor`, private `dev` Environment configuration, manual workflow dispatch, and application publication.
+
 Still deferred:
 
-- B4-D10 separate cloud identity, minimum non-secret configuration, manual `Provider=InMemory` publication, and deployed authentication/authorization validation.
+- B4-D10B separate cloud browser identity, minimum non-secret configuration, and deployed authentication/authorization validation.
 - B4-D11 App Service Managed Identity Key Vault RBAC, deployed credential composition, `Provider=KeyVault`, and closed-catalog read validation.
 
 Continuing security scenarios:

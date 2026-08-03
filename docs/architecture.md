@@ -8,7 +8,7 @@ The application user never accesses Azure Key Vault directly. The web applicatio
 
 ### Deferred application target state
 
-The complete diagram below remains the deferred application target state. B4-D7 infrastructure is owner-validated, B4-D8 is merged, and B4-D9 has deployed and owner-validated an empty App Service host and its system-assigned identity. Workload credential composition, application-identity RBAC, application publishing, telemetry, and CI/CD remain deferred.
+The complete diagram below remains the deferred application target state. B4-D7 infrastructure is owner-validated, B4-D8 is merged, and B4-D9 has deployed and owner-validated an empty App Service host and its system-assigned identity. B4-D10A prepares the repository-local GitHub OIDC deployment foundation, but its Azure identity, RBAC, GitHub Environment, workflow run, and application publication remain owner-run and are not yet claimed. Workload credential composition, cloud browser authentication, Key Vault application RBAC, and telemetry remain deferred.
 
 ```mermaid
 flowchart LR
@@ -153,6 +153,7 @@ The stable `Microsoft.Web/serverfarms@2025-03-01`, `Microsoft.Web/sites@2025-03-
 - **ASP.NET Core Razor Pages:** The planned web application and user authorization enforcement point.
 - **Azure App Service:** The deployed and owner-validated empty hosting platform for the future Razor Pages publication; B4-D9 creates no application package.
 - **System-assigned Managed Identity:** The identity created with the deployed Web App. Its existence is not authorization, and B4-D9 grants it no Key Vault permission.
+- **GitHub deployment identity:** A dedicated App Registration and Service Principal prepared by B4-D10A for GitHub OIDC. When owner-created, its only accepted direct assignment in the active subscription is `Website Contributor` at the exact Web App scope. It is not the browser application or runtime Managed Identity.
 - **Azure Key Vault:** The deployed and validated B4-D7 development secret store; completed B4-D8 owner-run validation proved that explicitly selected local mode can read its closed synthetic note set.
 - **Azure RBAC:** The authorization system used to grant the Managed Identity data-plane access to Key Vault secrets.
 
@@ -226,7 +227,7 @@ Human identity and workload identity are intentionally separate:
 - Azure Web App with system-assigned Managed Identity: one deployed and owner-validated empty Linux Web App; no application package and no Key Vault role.
 - Application Insights and Log Analytics: planned and deferred, with conservative telemetry, sampling, retention, and cost controls required by a later milestone.
 
-The milestone order preserves identity separation. B4-D10 creates the separate cloud App Registration, adds cloud redirect and logout URIs, supplies minimum non-secret runtime configuration, manually publishes the application with `Provider=InMemory`, and validates deployed authentication plus `SecretNotes.Reader` authorization without Managed Identity Key Vault access. B4-D11 then adds deployed workload credential composition, the vault-scoped `Key Vault Secrets User` assignment for the Web App identity, `Provider=KeyVault`, and deployed closed-catalog reads.
+The milestone order preserves identity separation. B4-D10A prepares the dedicated GitHub deployment identity and manual-only OIDC workflow. B4-D10B creates the separate cloud browser App Registration, adds cloud redirect and logout URIs, supplies minimum non-secret runtime configuration, publishes with `Provider=InMemory`, and validates deployed authentication plus `SecretNotes.Reader` authorization. B4-D11 then adds the vault-scoped `Key Vault Secrets User` assignment for the Web App identity, `Provider=KeyVault`, and deployed closed-catalog reads.
 
 ## Non-sensitive application configuration
 
