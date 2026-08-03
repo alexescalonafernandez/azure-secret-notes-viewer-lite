@@ -124,6 +124,83 @@ function Get-RequiredStringProperty {
     return [string] $property.Value
 }
 
+function Get-RequiredObjectProperty {
+    param(
+        [Parameter(Mandatory)][psobject] $Object,
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][string] $FailureReason
+    )
+
+    $property = $Object.PSObject.Properties[$Name]
+    if (
+        $null -eq $property -or
+        $null -eq $property.Value -or
+        $property.Value -is [System.Array] -or
+        $property.Value -isnot [psobject]
+    ) { throw $FailureReason }
+
+    return $property.Value
+}
+
+function Get-RequiredBooleanProperty {
+    param(
+        [Parameter(Mandatory)][psobject] $Object,
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][string] $FailureReason
+    )
+
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property -or $property.Value -isnot [bool]) {
+        throw $FailureReason
+    }
+
+    return [bool] $property.Value
+}
+
+function Assert-EmptyArrayProperty {
+    param(
+        [Parameter(Mandatory)][psobject] $Object,
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][string] $FailureReason,
+        [Parameter(Mandatory)][string] $NonEmptyFailureReason
+    )
+
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property -or $property.Value -isnot [System.Array]) {
+        throw $FailureReason
+    }
+    if (@($property.Value).Count -ne 0) { throw $NonEmptyFailureReason }
+}
+
+function Invoke-BoundedDiscovery {
+    param(
+        [Parameter(Mandatory)][scriptblock] $Discovery,
+        [Parameter(Mandatory)][scriptblock] $IsReady,
+        [Parameter(Mandatory)][string] $FailureReason,
+        [ValidateRange(1, 20)][int] $MaxAttempts = 6,
+        [ValidateRange(1, 60)][int] $DelaySeconds = 5
+    )
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            $state = & $Discovery
+            if (& $IsReady $state) {
+                Write-Output $state
+                return
+            }
+        }
+        catch {
+            if ($attempt -eq $MaxAttempts) { throw $FailureReason }
+        }
+
+        if ($attempt -lt $MaxAttempts) {
+            Start-Sleep -Seconds $DelaySeconds
+        }
+    }
+
+    throw $FailureReason
+}
+
 function Assert-PrivateInputs {
     if (
         $ResourceGroupName -notmatch '^[A-Za-z0-9_.()-]{1,90}$' -or
@@ -135,6 +212,30 @@ function Assert-PrivateInputs {
     if (-not [Guid]::TryParse($LocalDevelopmentAppClientId, [ref] $parsedClientId)) {
         throw 'local-development-identity-input-invalid'
     }
+}
+
+function Assert-LocalDevelopmentApplication {
+    $application = Invoke-AzureJsonObject `
+        -FailureReason 'local-development-application-response-invalid' `
+        -Arguments @(
+            'ad', 'app', 'show',
+            '--id', $LocalDevelopmentAppClientId,
+            '--query', '{appId:appId}',
+            '--output', 'json',
+            '--only-show-errors'
+        )
+
+    $resolvedAppId = Get-RequiredStringProperty `
+        $application 'appId' 'local-development-application-response-invalid'
+    $parsedAppId = [Guid]::Empty
+    if (
+        -not [Guid]::TryParse($resolvedAppId, [ref] $parsedAppId) -or
+        -not [string]::Equals(
+            $resolvedAppId,
+            $LocalDevelopmentAppClientId,
+            [StringComparison]::OrdinalIgnoreCase
+        )
+    ) { throw 'local-development-application-response-invalid' }
 }
 
 function Get-ApplicationMatches {
@@ -182,24 +283,47 @@ function Get-ApplicationState {
         -Arguments @(
             'ad', 'app', 'show',
             '--id', $AppId,
-            '--query', '{id:id,appId:appId,displayName:displayName,passwordCredentials:passwordCredentials}',
+            '--query', '{id:id,appId:appId,displayName:displayName,signInAudience:signInAudience,passwordCredentials:passwordCredentials,keyCredentials:keyCredentials,requiredResourceAccess:requiredResourceAccess,web:web,spa:spa,publicClient:publicClient}',
             '--output', 'json',
             '--only-show-errors'
         )
 
+    $objectId = Get-RequiredStringProperty $application 'id' 'application-response-invalid'
     $resolvedAppId = Get-RequiredStringProperty $application 'appId' 'application-response-invalid'
     $displayName = Get-RequiredStringProperty $application 'displayName' 'application-response-invalid'
-    $passwordCredentialsProperty = $application.PSObject.Properties['passwordCredentials']
+    $signInAudience = Get-RequiredStringProperty `
+        $application 'signInAudience' 'deployment-application-configuration-invalid'
+    $parsedObjectId = [Guid]::Empty
     if (
+        -not [Guid]::TryParse($objectId, [ref] $parsedObjectId) -or
         -not [string]::Equals($resolvedAppId, $AppId, [StringComparison]::OrdinalIgnoreCase) -or
         -not [string]::Equals($displayName, $DeploymentAppRegistrationName, [StringComparison]::Ordinal) -or
-        $null -eq $passwordCredentialsProperty -or
-        $passwordCredentialsProperty.Value -isnot [System.Array]
+        $signInAudience -cne 'AzureADMyOrg'
     ) { throw 'application-response-invalid' }
 
-    if (@($passwordCredentialsProperty.Value).Count -ne 0) {
-        throw 'deployment-client-secret-present'
-    }
+    Assert-EmptyArrayProperty $application 'passwordCredentials' `
+        'deployment-application-password-credentials-invalid' `
+        'deployment-application-password-credential-present'
+    Assert-EmptyArrayProperty $application 'keyCredentials' `
+        'deployment-application-key-credentials-invalid' `
+        'deployment-application-key-credential-present'
+    Assert-EmptyArrayProperty $application 'requiredResourceAccess' `
+        'deployment-required-resource-access-invalid' `
+        'deployment-required-resource-access-present'
+
+    $web = Get-RequiredObjectProperty `
+        $application 'web' 'deployment-web-configuration-invalid'
+    $spa = Get-RequiredObjectProperty `
+        $application 'spa' 'deployment-spa-configuration-invalid'
+    $publicClient = Get-RequiredObjectProperty `
+        $application 'publicClient' 'deployment-public-client-configuration-invalid'
+    Assert-EmptyArrayProperty $web 'redirectUris' `
+        'deployment-web-redirect-uris-invalid' 'deployment-web-redirect-uri-present'
+    Assert-EmptyArrayProperty $spa 'redirectUris' `
+        'deployment-spa-redirect-uris-invalid' 'deployment-spa-redirect-uri-present'
+    Assert-EmptyArrayProperty $publicClient 'redirectUris' `
+        'deployment-public-client-redirect-uris-invalid' `
+        'deployment-public-client-redirect-uri-present'
 
     return $application
 }
@@ -237,6 +361,45 @@ function Get-ServicePrincipalMatches {
     }
 
     Write-Output -NoEnumerate $matches
+}
+
+function Get-ServicePrincipalState {
+    param([Parameter(Mandatory)][string] $AppId)
+
+    $servicePrincipal = Invoke-AzureJsonObject `
+        -FailureReason 'service-principal-response-invalid' `
+        -Arguments @(
+            'ad', 'sp', 'show',
+            '--id', $AppId,
+            '--query', '{id:id,appId:appId,servicePrincipalType:servicePrincipalType,accountEnabled:accountEnabled,passwordCredentials:passwordCredentials,keyCredentials:keyCredentials}',
+            '--output', 'json',
+            '--only-show-errors'
+        )
+
+    $objectId = Get-RequiredStringProperty `
+        $servicePrincipal 'id' 'service-principal-response-invalid'
+    $resolvedAppId = Get-RequiredStringProperty `
+        $servicePrincipal 'appId' 'service-principal-response-invalid'
+    $type = Get-RequiredStringProperty `
+        $servicePrincipal 'servicePrincipalType' 'service-principal-response-invalid'
+    $accountEnabled = Get-RequiredBooleanProperty `
+        $servicePrincipal 'accountEnabled' 'service-principal-response-invalid'
+    $parsedObjectId = [Guid]::Empty
+    if (
+        -not [Guid]::TryParse($objectId, [ref] $parsedObjectId) -or
+        -not [string]::Equals($resolvedAppId, $AppId, [StringComparison]::OrdinalIgnoreCase) -or
+        $type -cne 'Application' -or
+        -not $accountEnabled
+    ) { throw 'deployment-service-principal-invalid' }
+
+    Assert-EmptyArrayProperty $servicePrincipal 'passwordCredentials' `
+        'service-principal-password-credentials-invalid' `
+        'service-principal-password-credential-present'
+    Assert-EmptyArrayProperty $servicePrincipal 'keyCredentials' `
+        'service-principal-key-credentials-invalid' `
+        'service-principal-key-credential-present'
+
+    return $servicePrincipal
 }
 
 function Get-FederatedCredentials {
@@ -389,6 +552,8 @@ try {
         -not [Guid]::TryParse($tenantId, [ref] $parsedTenantId)
     ) { throw 'subscription-context-invalid' }
 
+    Assert-LocalDevelopmentApplication
+
     $expectedWebAppScope = '/subscriptions/{0}/resourceGroups/{1}/providers/Microsoft.Web/sites/{2}' -f `
         $subscriptionId, $ResourceGroupName, $WebAppName
     $webApp = Invoke-AzureJsonObject `
@@ -431,8 +596,10 @@ try {
                 '--output', 'none',
                 '--only-show-errors'
             )
-        $applications = Get-ApplicationMatches
-        if ($applications.Count -ne 1) { throw 'deployment-application-create-invalid' }
+        $applications = @(Invoke-BoundedDiscovery `
+            -FailureReason 'deployment-application-create-invalid' `
+            -Discovery { Get-ApplicationMatches } `
+            -IsReady { param($state) $state.Count -eq 1 })
     }
 
     $applicationObjectId = Get-RequiredStringProperty $applications[0] 'id' 'application-response-invalid'
@@ -461,14 +628,15 @@ try {
                 '--output', 'none',
                 '--only-show-errors'
             )
-        $servicePrincipals = Get-ServicePrincipalMatches -AppId $appId
-        if ($servicePrincipals.Count -ne 1) {
-            throw 'deployment-service-principal-create-invalid'
-        }
+        $servicePrincipals = @(Invoke-BoundedDiscovery `
+            -FailureReason 'deployment-service-principal-create-invalid' `
+            -Discovery { Get-ServicePrincipalMatches -AppId $appId } `
+            -IsReady { param($state) $state.Count -eq 1 })
     }
 
+    $servicePrincipalState = Get-ServicePrincipalState -AppId $appId
     $servicePrincipalObjectId = Get-RequiredStringProperty `
-        $servicePrincipals[0] 'id' 'service-principal-response-invalid'
+        $servicePrincipalState 'id' 'service-principal-response-invalid'
     if ([string]::Equals(
         $servicePrincipalObjectId,
         $webAppPrincipalId,
@@ -517,8 +685,18 @@ try {
             Remove-Item -LiteralPath $temporaryCredentialFile.FullName -Force -ErrorAction SilentlyContinue
         }
 
-        $credentials = Get-FederatedCredentials -ApplicationObjectId $applicationObjectId
-        if ($credentials.Count -ne 1) { throw 'federated-credential-create-invalid' }
+        $credentials = @(Invoke-BoundedDiscovery `
+            -FailureReason 'federated-credential-create-invalid' `
+            -Discovery {
+                Get-FederatedCredentials -ApplicationObjectId $applicationObjectId
+            } `
+            -IsReady {
+                param($state)
+                $namedState = @($state | Where-Object {
+                    $_.name -ceq $federatedCredentialName
+                })
+                $state.Count -eq 1 -and $namedState.Count -eq 1
+            })
         Assert-FederatedCredential -Credential $credentials[0]
     }
     if ($credentials.Count -ne 1) { throw 'federated-credential-set-invalid' }
@@ -557,8 +735,19 @@ try {
                 '--only-show-errors'
             )
 
-        $assignments = Get-DeploymentRoleAssignments `
-            -ServicePrincipalObjectId $servicePrincipalObjectId
+        $assignments = @(Invoke-BoundedDiscovery `
+            -FailureReason 'deployment-role-assignment-create-invalid' `
+            -Discovery {
+                Get-DeploymentRoleAssignments `
+                    -ServicePrincipalObjectId $servicePrincipalObjectId
+            } `
+            -IsReady {
+                param($state)
+                $expectedState = @($state | Where-Object {
+                    Test-ExpectedRoleAssignment $_ $roleDefinitionId $webAppScope
+                })
+                $expectedState.Count -eq 1
+            })
         $expectedAssignments = @($assignments | Where-Object {
             Test-ExpectedRoleAssignment $_ $roleDefinitionId $webAppScope
         })

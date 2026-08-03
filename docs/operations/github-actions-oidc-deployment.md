@@ -8,6 +8,12 @@ This checkpoint prepares automation; it does not prove cloud state. The deployme
 
 B4-D10B remains responsible for the separate cloud browser-authentication identity, persistent non-secret runtime App Settings, application publication evidence, endpoint validation beyond the workflow smoke check, and browser authentication/authorization validation. B4-D11 remains responsible for Web App Managed Identity Key Vault authorization and deployed Key Vault reads.
 
+## Delivery sequence
+
+GitHub cannot run a `workflow_dispatch` workflow until that workflow exists on the default branch. B4-D10A therefore requires its own foundation pull request and merge to `main`. That foundation pull request must not close issue #21, and no deployment workflow is dispatched during B4-D10A.
+
+B4-D10B starts from the merged B4-D10A `main` baseline. It owns the first owner-run workflow dispatch and the associated cloud validation.
+
 ## Identity boundaries
 
 Three identity paths remain separate:
@@ -154,7 +160,7 @@ Its deployment job uses `environment: dev` and performs this sequence:
 8. Authenticate with `azure/login@v2` through GitHub OIDC.
 9. Deploy the publish directory with `azure/webapps-deploy@v3`.
 10. Retry a silent `/health` request a finite number of times with connection and request timeouts.
-11. Emit `public-health-valid` only after HTTP success.
+11. Emit `public-health-valid` only when the response status is exactly HTTP 200. Redirects and all other statuses fail the attempt without logging the URL or response body.
 
 The workflow deploys application files only. It does not deploy Bicep, mutate App Settings, manage Entra or RBAC, access Key Vault, or enable another deployment credential.
 

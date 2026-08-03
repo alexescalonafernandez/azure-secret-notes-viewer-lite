@@ -28,10 +28,15 @@ public sealed class GitHubOidcDeploymentFoundationTests
             new[] { "workflow_dispatch:" },
             ContentLines(triggerBlock));
 
-        var permissionsBlock = ExtractBlock(workflow, "permissions", "jobs");
+        var permissionsBlock = ExtractBlock(workflow, "permissions", "env");
         Assert.Equal(
             new[] { "id-token: write", "contents: read" },
             ContentLines(permissionsBlock));
+
+        var environmentBlock = ExtractBlock(workflow, "env", "jobs");
+        Assert.Equal(
+            new[] { "AZURE_CORE_OUTPUT: none" },
+            ContentLines(environmentBlock));
 
         Assert.Contains("environment: dev", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("permissions: write-all", workflow, StringComparison.OrdinalIgnoreCase);
@@ -72,8 +77,13 @@ public sealed class GitHubOidcDeploymentFoundationTests
         Assert.Contains("AZURE_TENANT_ID", workflow, StringComparison.Ordinal);
         Assert.Contains("AZURE_SUBSCRIPTION_ID", workflow, StringComparison.Ordinal);
         Assert.Contains("AZURE_WEBAPP_NAME", workflow, StringComparison.Ordinal);
+        Assert.Contains("AZURE_CORE_OUTPUT: none", workflow, StringComparison.Ordinal);
         Assert.Contains("--connect-timeout 5", workflow, StringComparison.Ordinal);
         Assert.Contains("--max-time 15", workflow, StringComparison.Ordinal);
+        Assert.Contains("--write-out '%{http_code}'", workflow, StringComparison.Ordinal);
+        Assert.Contains("[ \"$status_code\" = \"200\" ]", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("--location", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("curl --fail", workflow, StringComparison.Ordinal);
         Assert.Contains("for attempt in {1..12}", workflow, StringComparison.Ordinal);
         Assert.Contains("public-health-valid", workflow, StringComparison.Ordinal);
 
@@ -137,6 +147,40 @@ public sealed class GitHubOidcDeploymentFoundationTests
         Assert.Contains("[Parameter(Mandatory)]", script, StringComparison.Ordinal);
         Assert.Contains("$DeploymentAppRegistrationName", script, StringComparison.Ordinal);
         Assert.Contains("$LocalDevelopmentAppClientId", script, StringComparison.Ordinal);
+        Assert.Contains("signInAudience:signInAudience", script, StringComparison.Ordinal);
+        Assert.Contains("$signInAudience -cne 'AzureADMyOrg'", script, StringComparison.Ordinal);
+        Assert.Contains("passwordCredentials:passwordCredentials", script, StringComparison.Ordinal);
+        Assert.Contains("keyCredentials:keyCredentials", script, StringComparison.Ordinal);
+        Assert.Contains("requiredResourceAccess:requiredResourceAccess", script, StringComparison.Ordinal);
+        Assert.Contains("web:web", script, StringComparison.Ordinal);
+        Assert.Contains("spa:spa", script, StringComparison.Ordinal);
+        Assert.Contains("publicClient:publicClient", script, StringComparison.Ordinal);
+        Assert.Matches(
+            @"Assert-EmptyArrayProperty \$(application|applicationState) 'passwordCredentials'",
+            script);
+        Assert.Matches(
+            @"Assert-EmptyArrayProperty \$(application|applicationState) 'keyCredentials'",
+            script);
+        Assert.Matches(
+            @"Assert-EmptyArrayProperty \$(application|applicationState) 'requiredResourceAccess'",
+            script);
+        Assert.Contains("Assert-EmptyArrayProperty $web 'redirectUris'", script, StringComparison.Ordinal);
+        Assert.Contains("Assert-EmptyArrayProperty $spa 'redirectUris'", script, StringComparison.Ordinal);
+        Assert.Contains("Assert-EmptyArrayProperty $publicClient 'redirectUris'", script, StringComparison.Ordinal);
+        Assert.Contains("servicePrincipalType:servicePrincipalType", script, StringComparison.Ordinal);
+        Assert.Contains("accountEnabled:accountEnabled", script, StringComparison.Ordinal);
+        Assert.Matches(
+            @"Assert-EmptyArrayProperty \$servicePrincipal(State)? 'passwordCredentials'",
+            script);
+        Assert.Matches(
+            @"Assert-EmptyArrayProperty \$servicePrincipal(State)? 'keyCredentials'",
+            script);
+        Assert.Matches(@"\$(type|servicePrincipalType) -cne 'Application'", script);
+        Assert.Matches(@"-not \$(accountEnabled|servicePrincipalAccountEnabled)", script);
+        Assert.Contains("'ad', 'app', 'show'", script, StringComparison.Ordinal);
+        Assert.Contains("'--id', $LocalDevelopmentAppClientId", script, StringComparison.Ordinal);
+        Assert.Matches(@"\$resolvedAppId,\s*\$LocalDevelopmentAppClientId", script);
+        Assert.Contains("local-development-application-response-invalid", script, StringComparison.Ordinal);
 
         Assert.DoesNotContain("Invoke-Expression", script, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("--output', 'tsv", script, StringComparison.OrdinalIgnoreCase);
@@ -157,6 +201,13 @@ public sealed class GitHubOidcDeploymentFoundationTests
         Assert.Contains("if (-not $Apply)", script, StringComparison.Ordinal);
         Assert.Contains("github-oidc-apply-required", script, StringComparison.Ordinal);
         Assert.Contains("github-oidc-bootstrap-valid", script, StringComparison.Ordinal);
+        Assert.Contains("function Invoke-BoundedDiscovery", script, StringComparison.Ordinal);
+        Assert.Contains("for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++)", script, StringComparison.Ordinal);
+        Assert.Contains("Start-Sleep -Seconds $DelaySeconds", script, StringComparison.Ordinal);
+        Assert.Contains("deployment-application-create-invalid", script, StringComparison.Ordinal);
+        Assert.Contains("deployment-service-principal-create-invalid", script, StringComparison.Ordinal);
+        Assert.Contains("federated-credential-create-invalid", script, StringComparison.Ordinal);
+        Assert.Contains("deployment-role-assignment-create-invalid", script, StringComparison.Ordinal);
 
         var roleCreation = Regex.Match(
             script,
@@ -182,7 +233,8 @@ public sealed class GitHubOidcDeploymentFoundationTests
 
         Assert.Contains("local-development-identity-reused", script, StringComparison.Ordinal);
         Assert.Contains("webAppPrincipalId", script, StringComparison.Ordinal);
-        Assert.Contains("deployment-client-secret-present", script, StringComparison.Ordinal);
+        Assert.Contains("deployment-application-credentials-absent", script, StringComparison.Ordinal);
+        Assert.Contains("deployment-service-principal-credentials-absent", script, StringComparison.Ordinal);
         Assert.Contains("deployment-broader-rbac-absent", script, StringComparison.Ordinal);
         Assert.Contains("github-oidc-validation-valid", script, StringComparison.Ordinal);
     }

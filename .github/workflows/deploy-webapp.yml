@@ -7,6 +7,9 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  AZURE_CORE_OUTPUT: none
+
 jobs:
   deploy:
     name: Deploy Web App
@@ -86,7 +89,7 @@ jobs:
         run: |
           health_url="https://${WEBAPP_NAME}.azurewebsites.net/health"
           for attempt in {1..12}; do
-            if curl --fail --silent --output /dev/null --connect-timeout 5 --max-time 15 "$health_url"; then
+            if status_code="$(curl --silent --output /dev/null --connect-timeout 5 --max-time 15 --write-out '%{http_code}' "$health_url")" && [ "$status_code" = "200" ]; then
               echo "public-health-valid"
               exit 0
             fi
