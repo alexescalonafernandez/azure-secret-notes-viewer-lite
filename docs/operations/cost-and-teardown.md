@@ -1,6 +1,6 @@
 # Cost and teardown operations
 
-This document is non-executable. The accumulated owner-validated state is one development Resource Group, one Standard Key Vault containing the three synthetic secret fixtures and versions, the validated development-user reader role, one Linux F1 / Free App Service Plan, and one empty Linux Web App with a system-assigned Managed Identity. B4-D10A adds repository-local deployment preparation only; it does not claim that an Entra deployment identity, RBAC assignment, GitHub Environment, workflow run, or deployed application exists.
+This document is non-executable. The accumulated owner-validated state is one development Resource Group, one Standard Key Vault containing the three synthetic secret fixtures and versions, the validated development-user reader role, one Linux F1 / Free App Service Plan, and one empty Linux Web App with a system-assigned Managed Identity. B4-D10A and B4-D10B add repository-local deployment, cloud identity, runtime configuration, and validation preparation only; they do not claim that either Entra identity, RBAC assignment, GitHub Environment, App Settings deployment, workflow run, browser validation, or deployed application exists.
 
 ## Current and deferred Azure resources
 
@@ -10,6 +10,8 @@ This document is non-executable. The accumulated owner-validated state is one de
 - Linux App Service Plan F1 and empty Linux Web App: deployed and owner-validated.
 - Web App system-assigned Managed Identity: deployed and validated; B4-D9 assigns it no role, because identity creation is not authorization.
 - GitHub deployment App Registration, Service Principal, federated credential, exact Web App-scoped assignment, and `dev` Environment: prepared by repository workflows but pending owner-run creation and validation.
+- Cloud browser-authentication App Registration, assignment-required Enterprise Application, `SecretNotes.Reader`, and Managed Identity federation: prepared but pending owner-run creation and validation.
+- Exact five-setting `Provider=InMemory` runtime configuration and application package: prepared but pending owner-run what-if, apply, workflow dispatch, and validation.
 - Application Insights and Log Analytics: not introduced and deferred.
 
 ## Expected sources of cost
@@ -33,9 +35,9 @@ Capture only sanitized evidence before teardown. Remove the Web App before its p
 
 The Key Vault is independent of the App Service lifecycle. Removing the Web App or plan must not remove, recreate, or modify the vault, its three synthetic secret versions, or the development-user reader assignment. The vault remains purge protected with seven-day soft-delete retention. Deleting the Resource Group would delete both hosting and vault resources and leave the vault recoverable until retention completes, so a hosting-only teardown must not delete the Resource Group.
 
-No teardown command or automation is supplied by B4-D9 or B4-D10A. Resource and identity deletion requires a separately reviewed owner action.
+No teardown command or automation is supplied by B4-D9, B4-D10A, or B4-D10B. Resource and identity deletion requires a separately reviewed owner action.
 
-B4-D10A prepares GitHub OIDC deployment without granting the runtime identity Key Vault access. If the owner later creates the deployment identity, teardown must remove its private GitHub Environment configuration, exact Web App-scoped role, federated credential, Service Principal, and App Registration without removing the Web App, plan, vault, development-user role, local App Registration, or Managed Identity. B4-D10B later owns cloud browser identity and publication state. B4-D11 owns the Web App identity's vault-scoped read role and `Provider=KeyVault`.
+B4-D10A prepares GitHub OIDC deployment without granting the runtime identity Key Vault access. If the owner creates the deployment identity, teardown must remove its private GitHub Environment configuration, exact Web App-scoped role, federated credential, Service Principal, and App Registration. If the owner creates B4-D10B state, first remove cloud user app-role assignments, then its Managed Identity federated credential, Enterprise Application, cloud App Registration, application content, and exact App Settings when no longer required. Preserve the local App Registration, Web App, plan, vault, synthetic secrets, development-user role, and Managed Identity unless their own teardown explicitly includes them. B4-D11 owns the Web App identity's future vault-scoped read role and `Provider=KeyVault`.
 
 ## Conceptual hosting-only teardown order
 

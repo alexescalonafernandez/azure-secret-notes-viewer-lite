@@ -6,9 +6,9 @@ Secret Notes Viewer Lite is a small ASP.NET Core Razor Pages application with a 
 
 The application user never accesses Azure Key Vault directly. The web application is the policy enforcement point for user authorization. B4-D8 local mode uses the separately authorized Azure CLI development identity as the Key Vault caller; a future deployed application will use a workload identity.
 
-### Deferred application target state
+### Application target state
 
-The complete diagram below remains the deferred application target state. B4-D7 infrastructure is owner-validated, B4-D8 is merged, and B4-D9 has deployed and owner-validated an empty App Service host and its system-assigned identity. B4-D10A prepares the repository-local GitHub OIDC deployment foundation, but its Azure identity, RBAC, GitHub Environment, workflow run, and application publication remain owner-run and are not yet claimed. Workload credential composition, cloud browser authentication, Key Vault application RBAC, and telemetry remain deferred.
+The diagram remains the B4-D11 target for Key Vault reads. B4-D7 infrastructure is owner-validated, B4-D8 is merged, and B4-D9 deployed and owner-validated an empty App Service host and its system-assigned identity. B4-D10A and B4-D10B now prepare the repository-local deployment, cloud browser authentication, secretless client assertion, runtime configuration, and validation paths, but all cloud execution remains owner-run and is not yet claimed. Key Vault application RBAC, deployed `Provider=KeyVault`, and telemetry remain deferred.
 
 ```mermaid
 flowchart LR
@@ -146,6 +146,16 @@ The plan module and Web App module share only the existing Resource Group scope 
 
 The stable `Microsoft.Web/serverfarms@2025-03-01`, `Microsoft.Web/sites@2025-03-01`, and `Microsoft.Web/sites/basicPublishingCredentialsPolicies@2025-03-01` schemas represent all required properties. Owner-run deployment and post-deployment validation completed successfully. The validated state is one Linux F1 / Free plan and one empty Linux Web App using `DOTNETCORE|10.0`, with HTTPS-only, site and SCM TLS 1.2, disabled FTP/FTPS and basic publishing credentials, enabled public network access, disabled client affinity, and one system-assigned Managed Identity. Validation also proved that no direct Key Vault role, App Setting, connection string, application package, repository-defined deployment artifact, Application Insights resource, or Log Analytics workspace was introduced.
 
+## Prepared B4-D10B cloud authentication boundary
+
+B4-D10B preserves four independent identities: the localhost App Registration with its local-only client secret, the GitHub OIDC deployment App Registration and Service Principal, the cloud browser-authentication App Registration and Enterprise Application, and the Web App system-assigned Managed Identity. Client IDs and principal IDs are compared only to reject reuse; no identity performs two jobs.
+
+The cloud application is single tenant, has only the two Web App callback URIs and one front-channel logout URI, exposes exactly the user-only `SecretNotes.Reader` app role, requires assignment on its Enterprise Application, and has no API permission, password, certificate, implicit grant, SPA redirect, or public-client flow. The Web App Managed Identity is the subject of the cloud registration's only federated identity credential. Microsoft.Identity.Web uses that federation through `SignedAssertionFromManagedIdentity`; because the identity is system-assigned, no Managed Identity client ID setting exists.
+
+Persistent App Settings are a separate Bicep responsibility behind `configureCloudRuntime = false`. The module targets the existing site and replaces the complete App Settings set with Production, the private cloud tenant/client identifiers, `SignedAssertionFromManagedIdentity`, and `Provider=InMemory`. It changes no plan, Web App identity, networking, TLS, publishing policy, connection string, telemetry, slot, Key Vault reference, or RBAC assignment.
+
+The owner sequence is Entra bootstrap, Entra validation, sanitized runtime validate/what-if, explicit runtime apply, manual GitHub workflow dispatch, read-only control-plane and anonymous endpoint validation, then private browser roleless/reader checks. Repository presence proves none of those cloud gates. B4-D11 remains the first milestone permitted to grant the Web App identity Key Vault access.
+
 ## Actors and Azure components
 
 - **User:** A human browser user who may be anonymous, authenticated without the app role, or authenticated with `SecretNotes.Reader`.
@@ -154,6 +164,7 @@ The stable `Microsoft.Web/serverfarms@2025-03-01`, `Microsoft.Web/sites@2025-03-
 - **Azure App Service:** The deployed and owner-validated empty hosting platform for the future Razor Pages publication; B4-D9 creates no application package.
 - **System-assigned Managed Identity:** The identity created with the deployed Web App. Its existence is not authorization, and B4-D9 grants it no Key Vault permission.
 - **GitHub deployment identity:** A dedicated App Registration and Service Principal prepared by B4-D10A for GitHub OIDC. When owner-created, its only accepted direct assignment in the active subscription is `Website Contributor` at the exact Web App scope. It is not the browser application or runtime Managed Identity.
+- **Cloud browser-authentication identity:** A separate App Registration and Enterprise Application prepared by B4-D10B. It authenticates users, emits `SecretNotes.Reader`, and trusts only the Web App Managed Identity as its confidential-client assertion source.
 - **Azure Key Vault:** The deployed and validated B4-D7 development secret store; completed B4-D8 owner-run validation proved that explicitly selected local mode can read its closed synthetic note set.
 - **Azure RBAC:** The authorization system used to grant the Managed Identity data-plane access to Key Vault secrets.
 
@@ -227,7 +238,7 @@ Human identity and workload identity are intentionally separate:
 - Azure Web App with system-assigned Managed Identity: one deployed and owner-validated empty Linux Web App; no application package and no Key Vault role.
 - Application Insights and Log Analytics: planned and deferred, with conservative telemetry, sampling, retention, and cost controls required by a later milestone.
 
-The milestone order preserves identity separation. B4-D10A prepares the dedicated GitHub deployment identity and manual-only OIDC workflow. B4-D10B creates the separate cloud browser App Registration, adds cloud redirect and logout URIs, supplies minimum non-secret runtime configuration, publishes with `Provider=InMemory`, and validates deployed authentication plus `SecretNotes.Reader` authorization. B4-D11 then adds the vault-scoped `Key Vault Secrets User` assignment for the Web App identity, `Provider=KeyVault`, and deployed closed-catalog reads.
+The milestone order preserves identity separation. B4-D10A prepares the dedicated GitHub deployment identity and manual-only OIDC workflow. B4-D10B prepares the separate cloud browser App Registration, cloud redirects/logout, minimum non-secret runtime configuration, `Provider=InMemory` publication, and deployed authentication plus `SecretNotes.Reader` validation; owner execution remains pending. B4-D11 then adds the vault-scoped `Key Vault Secrets User` assignment for the Web App identity, `Provider=KeyVault`, and deployed closed-catalog reads.
 
 ## Non-sensitive application configuration
 

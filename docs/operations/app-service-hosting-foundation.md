@@ -39,7 +39,7 @@ These stable schemas represent the required Linux plan, runtime, transport, iden
 
 The root composition defaults `provisionAppServiceHosting` to `false`. The plan and Web App modules exist only when an owner deliberately enables that gate. `appServicePlanName` and `webAppName` default to empty strings in the root template and must be populated privately before enabling the gate.
 
-The committed `infra/environments/development.bicepparam.example` contains placeholders and keeps the gate disabled. Copy it to the ignored `infra/environments/development.bicepparam` and replace placeholders only in the private file. Never publish, display, or commit the private file or its values.
+The committed `infra/environments/development.example.bicepparam` contains placeholders, has a Bicep-compilable extension, and keeps both hosting and cloud-runtime gates disabled. The historical `development.bicepparam.example` copy remains for compatibility, but local compile validation uses the correctly suffixed file. Copy either example to the ignored `infra/environments/development.bicepparam` and replace placeholders only in the private file. Never publish, display, or commit the private file or its values.
 
 ## Owner-run workflow
 
@@ -99,6 +99,6 @@ Repository-local evidence consists of successful Bicep and example-parameter com
 
 Deleting the Web App deletes its system-assigned identity. Any later RBAC assignment for that identity must be removed or reviewed during teardown. The Key Vault is purge protected and independent of the App Service lifecycle; a hosting-only teardown must preserve it, its synthetic secret versions, and the development-user reader role. See the cost and teardown guide for the conceptual sequence.
 
-B4-D10 owns the separate cloud App Registration, cloud redirect and logout URIs, minimum non-secret runtime configuration, manual application publication, `Provider=InMemory` startup, and deployed authentication plus `SecretNotes.Reader` authorization validation. It grants the Web App identity no Key Vault access.
+B4-D10B prepares the separate cloud App Registration, cloud redirect and logout URIs, minimum non-secret runtime configuration, manual application publication, `Provider=InMemory` startup, and deployed authentication plus `SecretNotes.Reader` authorization validation. Those owner-run cloud gates remain pending and grant the Web App identity no Key Vault access.
 
-B4-D11 owns deployed workload credential composition, the vault-scoped `Key Vault Secrets User` assignment for the Web App identity, `Provider=KeyVault` in Azure, and deployed closed-catalog reads. Neither later boundary is implemented or implied by B4-D9.
+B4-D11 owns the vault-scoped `Key Vault Secrets User` assignment for the Web App identity, `Provider=KeyVault` in Azure, and deployed closed-catalog reads. B4-D10B's Managed Identity-backed assertion authenticates the web client to Entra and is not Key Vault authorization. Neither later boundary is implied by B4-D9.

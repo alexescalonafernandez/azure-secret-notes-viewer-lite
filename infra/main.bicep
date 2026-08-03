@@ -18,6 +18,17 @@ param appServicePlanName string = ''
 @description('Globally unique name of the Linux Web App. Required when App Service hosting is enabled.')
 param webAppName string = ''
 
+@description('Whether to replace the existing Web App persistent App Settings with the exact B4-D10B runtime configuration.')
+param configureCloudRuntime bool = false
+
+@secure()
+@description('Private Microsoft Entra tenant ID for the cloud browser-authentication application.')
+param cloudTenantId string = ''
+
+@secure()
+@description('Private client ID of the cloud browser-authentication App Registration.')
+param cloudAppClientId string = ''
+
 @allowed([
   'westeurope'
 ])
@@ -85,5 +96,15 @@ module webApp 'modules/web-app.bicep' = if (provisionAppServiceHosting) {
     appServicePlanId: appServicePlan!.outputs.planResourceId
     location: location
     tags: tags
+  }
+}
+
+module webAppRuntimeConfig 'modules/web-app-runtime-config.bicep' = if (configureCloudRuntime) {
+  name: 'development-web-app-runtime-config'
+  scope: resourceGroup(resourceGroupName)
+  params: {
+    webAppName: webAppName
+    cloudTenantId: cloudTenantId
+    cloudAppClientId: cloudAppClientId
   }
 }

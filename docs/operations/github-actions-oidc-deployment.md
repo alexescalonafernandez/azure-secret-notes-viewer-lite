@@ -6,7 +6,7 @@ B4-D10A prepares a secretless, manual deployment path from GitHub Actions to the
 
 This checkpoint prepares automation; it does not prove cloud state. The deployment App Registration, Service Principal, federated credential, Web App-scoped RBAC assignment, GitHub Environment, workflow run, application publication, and Azure validation do not exist merely because these files are present. Their creation and validation remain explicit owner actions.
 
-B4-D10B remains responsible for the separate cloud browser-authentication identity, persistent non-secret runtime App Settings, application publication evidence, endpoint validation beyond the workflow smoke check, and browser authentication/authorization validation. B4-D11 remains responsible for Web App Managed Identity Key Vault authorization and deployed Key Vault reads.
+B4-D10B now provides the separate cloud browser-authentication bootstrap, persistent non-secret runtime App Settings, publication validation, and owner-run browser authentication/authorization procedure. Their cloud execution is not implied by repository presence. See [Cloud Entra authentication and publication](cloud-entra-authentication.md). B4-D11 remains responsible for Web App Managed Identity Key Vault authorization and deployed Key Vault reads.
 
 ## Delivery sequence
 
@@ -22,7 +22,7 @@ Three identity paths remain separate:
 Human browser user
 → separate cloud application identity
 → application authentication and SecretNotes.Reader authorization
-→ deferred to B4-D10B
+→ B4-D10B owner-run cloud gate
 
 GitHub Actions
 → GitHub OIDC
