@@ -250,7 +250,7 @@ function Get-ExistingWebAppState {
     return $webApp
 }
 
-function Assert-IdentityApplication {
+function Get-IdentityApplicationState {
     param(
         [Parameter(Mandatory)][string] $ClientId,
         [Parameter(Mandatory)][string] $FailureReason
@@ -261,14 +261,136 @@ function Assert-IdentityApplication {
         -Arguments @(
             'ad', 'app', 'show',
             '--id', $ClientId,
-            '--query', '{appId:appId}',
+            '--query', '{id:id,appId:appId}',
             '--output', 'json',
             '--only-show-errors'
         )
+    $objectId = Get-RequiredStringProperty $application 'id' $FailureReason
     $resolvedClientId = Get-RequiredStringProperty $application 'appId' $FailureReason
+    Assert-GuidString $objectId $FailureReason
+    Assert-GuidString $resolvedClientId $FailureReason
     if (-not [string]::Equals($resolvedClientId, $ClientId, [StringComparison]::OrdinalIgnoreCase)) {
         throw $FailureReason
     }
+    return $application
+}
+
+function Get-ApplicationServicePrincipalState {
+    param(
+        [Parameter(Mandatory)][string] $AppId,
+        [Parameter(Mandatory)][string] $FailureReason
+    )
+
+    $servicePrincipal = Invoke-AzureJsonObject `
+        -FailureReason $FailureReason `
+        -Arguments @(
+            'ad', 'sp', 'show',
+            '--id', $AppId,
+            '--query', '{id:id,appId:appId,servicePrincipalType:servicePrincipalType}',
+            '--output', 'json',
+            '--only-show-errors'
+        )
+    $objectId = Get-RequiredStringProperty $servicePrincipal 'id' $FailureReason
+    $resolvedAppId = Get-RequiredStringProperty $servicePrincipal 'appId' $FailureReason
+    $type = Get-RequiredStringProperty $servicePrincipal 'servicePrincipalType' $FailureReason
+    Assert-GuidString $objectId $FailureReason
+    Assert-GuidString $resolvedAppId $FailureReason
+    if (
+        -not [string]::Equals($resolvedAppId, $AppId, [StringComparison]::OrdinalIgnoreCase) -or
+        $type -cne 'Application'
+    ) { throw $FailureReason }
+    return $servicePrincipal
+}
+
+function Get-ManagedIdentityServicePrincipalState {
+    param(
+        [Parameter(Mandatory)][string] $PrincipalObjectId,
+        [Parameter(Mandatory)][string] $FailureReason
+    )
+
+    $servicePrincipal = Invoke-AzureJsonObject `
+        -FailureReason $FailureReason `
+        -Arguments @(
+            'ad', 'sp', 'show',
+            '--id', $PrincipalObjectId,
+            '--query', '{id:id,appId:appId,servicePrincipalType:servicePrincipalType}',
+            '--output', 'json',
+            '--only-show-errors'
+        )
+    $objectId = Get-RequiredStringProperty $servicePrincipal 'id' $FailureReason
+    $appId = Get-RequiredStringProperty $servicePrincipal 'appId' $FailureReason
+    $type = Get-RequiredStringProperty $servicePrincipal 'servicePrincipalType' $FailureReason
+    Assert-GuidString $objectId $FailureReason
+    Assert-GuidString $appId $FailureReason
+    if (
+        -not [string]::Equals($objectId, $PrincipalObjectId, [StringComparison]::OrdinalIgnoreCase) -or
+        $type -cne 'ManagedIdentity'
+    ) { throw $FailureReason }
+    return $servicePrincipal
+}
+
+function Assert-DistinctGuidValues {
+    param(
+        [Parameter(Mandatory)][string[]] $Values,
+        [Parameter(Mandatory)][int] $ExpectedCount,
+        [Parameter(Mandatory)][string] $FailureReason
+    )
+
+    if ($Values.Count -ne $ExpectedCount) { throw $FailureReason }
+    $distinct = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($value in $Values) {
+        Assert-GuidString $value $FailureReason
+        if (-not $distinct.Add($value)) { throw $FailureReason }
+    }
+}
+
+function Assert-CloudIdentitySeparation {
+    param(
+        [Parameter(Mandatory)][psobject] $LocalApplication,
+        [Parameter(Mandatory)][psobject] $DeploymentApplication,
+        [Parameter(Mandatory)][psobject] $CloudApplication,
+        [Parameter(Mandatory)][psobject] $DeploymentServicePrincipal,
+        [Parameter(Mandatory)][psobject] $CloudServicePrincipal,
+        [Parameter(Mandatory)][psobject] $ManagedIdentityServicePrincipal,
+        [Parameter(Mandatory)][string] $WebAppPrincipalId
+    )
+
+    $localApplicationObjectId = Get-RequiredStringProperty $LocalApplication 'id' 'local-application-object-id-invalid'
+    $localApplicationAppId = Get-RequiredStringProperty $LocalApplication 'appId' 'local-application-app-id-invalid'
+    $deploymentApplicationObjectId = Get-RequiredStringProperty $DeploymentApplication 'id' 'deployment-application-object-id-invalid'
+    $deploymentApplicationAppId = Get-RequiredStringProperty $DeploymentApplication 'appId' 'deployment-application-app-id-invalid'
+    $cloudApplicationObjectId = Get-RequiredStringProperty $CloudApplication 'id' 'cloud-application-object-id-invalid'
+    $cloudApplicationAppId = Get-RequiredStringProperty $CloudApplication 'appId' 'cloud-application-app-id-invalid'
+    $deploymentServicePrincipalObjectId = Get-RequiredStringProperty $DeploymentServicePrincipal 'id' 'deployment-service-principal-object-id-invalid'
+    $deploymentServicePrincipalAppId = Get-RequiredStringProperty $DeploymentServicePrincipal 'appId' 'deployment-service-principal-app-id-invalid'
+    $cloudServicePrincipalObjectId = Get-RequiredStringProperty $CloudServicePrincipal 'id' 'cloud-service-principal-object-id-invalid'
+    $cloudServicePrincipalAppId = Get-RequiredStringProperty $CloudServicePrincipal 'appId' 'cloud-service-principal-app-id-invalid'
+    $managedIdentityServicePrincipalObjectId = Get-RequiredStringProperty $ManagedIdentityServicePrincipal 'id' 'managed-identity-service-principal-object-id-invalid'
+    $managedIdentityServicePrincipalAppId = Get-RequiredStringProperty $ManagedIdentityServicePrincipal 'appId' 'managed-identity-service-principal-app-id-invalid'
+
+    if (
+        -not [string]::Equals($deploymentServicePrincipalAppId, $deploymentApplicationAppId, [StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals($cloudServicePrincipalAppId, $cloudApplicationAppId, [StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals($managedIdentityServicePrincipalObjectId, $WebAppPrincipalId, [StringComparison]::OrdinalIgnoreCase)
+    ) { throw 'identity-object-resolution-mismatch' }
+
+    Assert-DistinctGuidValues `
+        @($localApplicationAppId, $deploymentApplicationAppId, $cloudApplicationAppId, $managedIdentityServicePrincipalAppId) `
+        4 `
+        'application-app-id-reused'
+    Assert-DistinctGuidValues `
+        @($localApplicationObjectId, $deploymentApplicationObjectId, $cloudApplicationObjectId) `
+        3 `
+        'application-object-id-reused'
+    Assert-DistinctGuidValues `
+        @($deploymentServicePrincipalObjectId, $cloudServicePrincipalObjectId, $managedIdentityServicePrincipalObjectId) `
+        3 `
+        'service-principal-object-id-reused'
+    if ([string]::Equals(
+        $cloudServicePrincipalObjectId,
+        $WebAppPrincipalId,
+        [StringComparison]::OrdinalIgnoreCase
+    )) { throw 'cloud-service-principal-managed-identity-reused' }
 }
 
 function Get-CloudApplicationMatches {

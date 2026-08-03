@@ -44,12 +44,18 @@ try {
     $webAppPrincipalId = Get-RequiredStringProperty $webApp 'principalId' 'web-app-response-invalid'
     $hostName = Get-RequiredStringProperty $webApp 'defaultHostName' 'web-app-response-invalid'
 
-    Assert-IdentityApplication `
+    $localApplication = Get-IdentityApplicationState `
         $LocalDevelopmentAppClientId `
         'local-development-application-response-invalid'
-    Assert-IdentityApplication `
+    $deploymentApplication = Get-IdentityApplicationState `
         $DeploymentAppClientId `
         'deployment-application-response-invalid'
+    $deploymentServicePrincipal = Get-ApplicationServicePrincipalState `
+        $DeploymentAppClientId `
+        'deployment-service-principal-response-invalid'
+    $managedIdentityServicePrincipal = Get-ManagedIdentityServicePrincipalState `
+        $webAppPrincipalId `
+        'managed-identity-service-principal-response-invalid'
 
     $applications = @(Get-CloudApplicationMatches $CloudAppRegistrationName)
     if ($applications.Count -ne 1) { throw 'cloud-application-count-invalid' }
@@ -57,19 +63,12 @@ try {
         $applications[0] 'id' 'cloud-application-response-invalid'
     $cloudAppClientId = Get-RequiredStringProperty `
         $applications[0] 'appId' 'cloud-application-response-invalid'
-    if (
-        [string]::Equals($cloudAppClientId, $LocalDevelopmentAppClientId, [StringComparison]::OrdinalIgnoreCase) -or
-        [string]::Equals($cloudAppClientId, $DeploymentAppClientId, [StringComparison]::OrdinalIgnoreCase) -or
-        [string]::Equals($cloudAppClientId, $webAppPrincipalId, [StringComparison]::OrdinalIgnoreCase) -or
-        [string]::Equals($webAppPrincipalId, $LocalDevelopmentAppClientId, [StringComparison]::OrdinalIgnoreCase) -or
-        [string]::Equals($webAppPrincipalId, $DeploymentAppClientId, [StringComparison]::OrdinalIgnoreCase)
-    ) { throw 'cloud-identity-reused' }
 
     $expectedSignInUri = "https://$hostName/signin-oidc"
     $expectedSignOutCallbackUri = "https://$hostName/signout-callback-oidc"
     $expectedFrontChannelLogoutUri = "https://$hostName/signout-oidc"
     $expectedIssuer = "https://login.microsoftonline.com/$tenantId/v2.0"
-    $null = Assert-CloudApplicationState `
+    $cloudApplication = Assert-CloudApplicationState `
         $cloudAppClientId `
         $CloudAppRegistrationName `
         $expectedSignInUri `
@@ -86,13 +85,14 @@ try {
     $servicePrincipals = @(Get-CloudServicePrincipalMatches $cloudAppClientId)
     if ($servicePrincipals.Count -ne 1) { throw 'cloud-service-principal-count-invalid' }
     $cloudServicePrincipal = Assert-CloudServicePrincipalState $cloudAppClientId
-    $cloudServicePrincipalId = Get-RequiredStringProperty `
-        $cloudServicePrincipal 'id' 'cloud-service-principal-response-invalid'
-    if ([string]::Equals(
-        $cloudServicePrincipalId,
-        $webAppPrincipalId,
-        [StringComparison]::OrdinalIgnoreCase
-    )) { throw 'cloud-service-principal-managed-identity-reused' }
+    Assert-CloudIdentitySeparation `
+        $localApplication `
+        $deploymentApplication `
+        $cloudApplication `
+        $deploymentServicePrincipal `
+        $cloudServicePrincipal `
+        $managedIdentityServicePrincipal `
+        $webAppPrincipalId
     Write-Output 'cloud-enterprise-application-valid'
     Write-Output 'cloud-assignment-required-valid'
 

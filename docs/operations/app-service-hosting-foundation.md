@@ -39,7 +39,7 @@ These stable schemas represent the required Linux plan, runtime, transport, iden
 
 The root composition defaults `provisionAppServiceHosting` to `false`. The plan and Web App modules exist only when an owner deliberately enables that gate. `appServicePlanName` and `webAppName` default to empty strings in the root template and must be populated privately before enabling the gate.
 
-The committed `infra/environments/development.example.bicepparam` contains placeholders, has a Bicep-compilable extension, and keeps both hosting and cloud-runtime gates disabled. The historical `development.bicepparam.example` copy remains for compatibility, but local compile validation uses the correctly suffixed file. Copy either example to the ignored `infra/environments/development.bicepparam` and replace placeholders only in the private file. Never publish, display, or commit the private file or its values.
+The committed `infra/environments/development.example.bicepparam` contains placeholders, has a Bicep-compilable extension, and keeps both hosting and cloud-runtime gates disabled. Copy that example to the ignored `infra/environments/development.bicepparam` and replace placeholders only in the private file. Never publish, display, or commit the private file or its values.
 
 ## Owner-run workflow
 

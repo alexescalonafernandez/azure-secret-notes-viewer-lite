@@ -132,6 +132,20 @@ try {
     Write-Output 'cloud-runtime-settings-valid'
     Write-Output 'in-memory-provider-valid'
 
+    $connectionStrings = Invoke-AzureJsonArray `
+        -FailureReason 'connection-strings-response-invalid' `
+        -Arguments @(
+            'webapp', 'config', 'connection-string', 'list',
+            '--resource-group', $ResourceGroupName,
+            '--name', $WebAppName,
+            '--subscription', $subscriptionId,
+            '--query', '[].{name:name}',
+            '--output', 'json',
+            '--only-show-errors'
+        )
+    if ($connectionStrings.Count -ne 0) { throw 'connection-string-present' }
+    Write-Output 'connection-strings-absent'
+
     foreach ($policyName in @('scm', 'ftp')) {
         $policy = Invoke-AzureJsonObject `
             -FailureReason 'publishing-policy-response-invalid' `

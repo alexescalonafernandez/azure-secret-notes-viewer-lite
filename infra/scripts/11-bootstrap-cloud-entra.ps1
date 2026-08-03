@@ -73,16 +73,18 @@ try {
     $webAppPrincipalId = Get-RequiredStringProperty $webApp 'principalId' 'web-app-response-invalid'
     $hostName = Get-RequiredStringProperty $webApp 'defaultHostName' 'web-app-response-invalid'
 
-    Assert-IdentityApplication `
+    $localApplication = Get-IdentityApplicationState `
         $LocalDevelopmentAppClientId `
         'local-development-application-response-invalid'
-    Assert-IdentityApplication `
+    $deploymentApplication = Get-IdentityApplicationState `
         $DeploymentAppClientId `
         'deployment-application-response-invalid'
-    if (
-        [string]::Equals($webAppPrincipalId, $LocalDevelopmentAppClientId, [StringComparison]::OrdinalIgnoreCase) -or
-        [string]::Equals($webAppPrincipalId, $DeploymentAppClientId, [StringComparison]::OrdinalIgnoreCase)
-    ) { throw 'managed-identity-application-id-reused' }
+    $deploymentServicePrincipal = Get-ApplicationServicePrincipalState `
+        $DeploymentAppClientId `
+        'deployment-service-principal-response-invalid'
+    $managedIdentityServicePrincipal = Get-ManagedIdentityServicePrincipalState `
+        $webAppPrincipalId `
+        'managed-identity-service-principal-response-invalid'
 
     $expectedSignInUri = "https://$hostName/signin-oidc"
     $expectedSignOutCallbackUri = "https://$hostName/signout-callback-oidc"
@@ -141,12 +143,7 @@ try {
         $applications[0] 'id' 'cloud-application-response-invalid'
     $cloudAppClientId = Get-RequiredStringProperty `
         $applications[0] 'appId' 'cloud-application-response-invalid'
-    if (
-        [string]::Equals($cloudAppClientId, $LocalDevelopmentAppClientId, [StringComparison]::OrdinalIgnoreCase) -or
-        [string]::Equals($cloudAppClientId, $DeploymentAppClientId, [StringComparison]::OrdinalIgnoreCase) -or
-        [string]::Equals($cloudAppClientId, $webAppPrincipalId, [StringComparison]::OrdinalIgnoreCase)
-    ) { throw 'cloud-identity-reused' }
-    $null = Assert-CloudApplicationState `
+    $cloudApplication = Assert-CloudApplicationState `
         $cloudAppClientId `
         $CloudAppRegistrationName `
         $expectedSignInUri `
@@ -160,6 +157,7 @@ try {
 
     $servicePrincipals = @(Get-CloudServicePrincipalMatches $cloudAppClientId)
     if ($servicePrincipals.Count -gt 1) { throw 'cloud-service-principal-duplicate' }
+    $servicePrincipalCreated = $false
     if ($servicePrincipals.Count -eq 0) {
         if (-not $Apply) {
             Write-Output 'cloud-entra-apply-required'
@@ -168,10 +166,6 @@ try {
 
         $servicePrincipalDocument = [ordered]@{
             appId = $cloudAppClientId
-            accountEnabled = $true
-            appRoleAssignmentRequired = $true
-            passwordCredentials = @()
-            keyCredentials = @()
         }
         Invoke-JsonMutation `
             -Method 'POST' `
@@ -182,16 +176,50 @@ try {
             -FailureReason 'cloud-service-principal-create-invalid' `
             -Discovery { Get-CloudServicePrincipalMatches $cloudAppClientId } `
             -IsReady { param($state) @($state).Count -eq 1 })
+        $servicePrincipalCreated = $true
     }
 
-    $cloudServicePrincipal = Assert-CloudServicePrincipalState $cloudAppClientId
-    $cloudServicePrincipalId = Get-RequiredStringProperty `
-        $cloudServicePrincipal 'id' 'cloud-service-principal-response-invalid'
-    if (
-        [string]::Equals($cloudServicePrincipalId, $webAppPrincipalId, [StringComparison]::OrdinalIgnoreCase) -or
-        [string]::Equals($cloudServicePrincipalId, $LocalDevelopmentAppClientId, [StringComparison]::OrdinalIgnoreCase) -or
-        [string]::Equals($cloudServicePrincipalId, $DeploymentAppClientId, [StringComparison]::OrdinalIgnoreCase)
-    ) { throw 'cloud-service-principal-identity-reused' }
+    if ($servicePrincipalCreated) {
+        $createdServicePrincipalId = Get-RequiredStringProperty `
+            $servicePrincipals[0] 'id' 'cloud-service-principal-create-invalid'
+        Assert-GuidString $createdServicePrincipalId 'cloud-service-principal-create-invalid'
+        $servicePrincipalPatchDocument = [ordered]@{
+            appRoleAssignmentRequired = $true
+        }
+        Invoke-JsonMutation `
+            -Method 'PATCH' `
+            -Url "https://graph.microsoft.com/v1.0/servicePrincipals/$createdServicePrincipalId" `
+            -Document $servicePrincipalPatchDocument `
+            -FailureReason 'cloud-service-principal-update-failed'
+        $cloudServicePrincipal = Invoke-BoundedDiscovery `
+            -FailureReason 'cloud-service-principal-validation-failed' `
+            -Discovery {
+                $validatedServicePrincipal = Assert-CloudServicePrincipalState $cloudAppClientId
+                $validatedServicePrincipalId = Get-RequiredStringProperty `
+                    $validatedServicePrincipal `
+                    'id' `
+                    'cloud-service-principal-validation-failed'
+                if (-not [string]::Equals(
+                    $validatedServicePrincipalId,
+                    $createdServicePrincipalId,
+                    [StringComparison]::OrdinalIgnoreCase
+                )) { throw 'cloud-service-principal-validation-failed' }
+                return $validatedServicePrincipal
+            } `
+            -IsReady { param($state) $null -ne $state }
+    }
+    else {
+        $cloudServicePrincipal = Assert-CloudServicePrincipalState $cloudAppClientId
+    }
+
+    Assert-CloudIdentitySeparation `
+        $localApplication `
+        $deploymentApplication `
+        $cloudApplication `
+        $deploymentServicePrincipal `
+        $cloudServicePrincipal `
+        $managedIdentityServicePrincipal `
+        $webAppPrincipalId
     Write-Output 'cloud-enterprise-application-valid'
     Write-Output 'cloud-assignment-required-valid'
 

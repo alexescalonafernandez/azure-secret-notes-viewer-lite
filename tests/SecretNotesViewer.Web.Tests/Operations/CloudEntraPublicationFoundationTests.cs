@@ -63,12 +63,14 @@ public sealed class CloudEntraPublicationFoundationTests
         Assert.Contains("cloud-federated-credential-count-invalid", script, StringComparison.Ordinal);
         Assert.Contains("'--method', $Method", script, StringComparison.Ordinal);
         Assert.Contains("-Method 'POST'", script, StringComparison.Ordinal);
+        Assert.Contains("-Method 'PATCH'", script, StringComparison.Ordinal);
         Assert.DoesNotContain("'DELETE'", script, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("-Method 'PATCH'", script, StringComparison.OrdinalIgnoreCase);
 
         var firstApplyGuard = script.IndexOf("if (-not $Apply)", StringComparison.Ordinal);
         var firstMutation = script.IndexOf("-Method 'POST'", StringComparison.Ordinal);
-        Assert.True(firstApplyGuard >= 0 && firstApplyGuard < firstMutation);
+        var servicePrincipalPatch = script.IndexOf("-Method 'PATCH'", StringComparison.Ordinal);
+        Assert.True(
+            firstApplyGuard >= 0 && firstApplyGuard < firstMutation && firstApplyGuard < servicePrincipalPatch);
     }
 
     [Fact]
@@ -122,9 +124,88 @@ public sealed class CloudEntraPublicationFoundationTests
         Assert.Contains("$DeploymentAppClientId", combined, StringComparison.Ordinal);
         Assert.Contains("$cloudAppClientId", combined, StringComparison.Ordinal);
         Assert.Contains("$webAppPrincipalId", combined, StringComparison.Ordinal);
-        Assert.Contains("cloud-identity-reused", combined, StringComparison.Ordinal);
+        Assert.Contains("application-app-id-reused", combined, StringComparison.Ordinal);
+        Assert.Contains("application-object-id-reused", combined, StringComparison.Ordinal);
+        Assert.Contains("service-principal-object-id-reused", combined, StringComparison.Ordinal);
         Assert.Contains("cloud-identity-separation-valid", combined, StringComparison.Ordinal);
         Assert.Contains("web-app-key-vault-rbac-absent", validator, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void IdentityResolutionAndSeparationUseMatchingIdentifierDomains()
+    {
+        var bootstrap = ReadScript("11-bootstrap-cloud-entra.ps1");
+        var validator = ReadScript("12-validate-cloud-entra.ps1");
+        var common = ReadScript("cloud-entra-common.ps1");
+        var scripts = bootstrap + validator;
+
+        Assert.Contains("function Get-IdentityApplicationState", common, StringComparison.Ordinal);
+        Assert.Contains("'--query', '{id:id,appId:appId}'", common, StringComparison.Ordinal);
+        Assert.Contains("function Get-ApplicationServicePrincipalState", common, StringComparison.Ordinal);
+        Assert.Contains("function Get-ManagedIdentityServicePrincipalState", common, StringComparison.Ordinal);
+        Assert.Contains(
+            "'--query', '{id:id,appId:appId,servicePrincipalType:servicePrincipalType}'",
+            common,
+            StringComparison.Ordinal);
+        Assert.Contains("$localApplication = Get-IdentityApplicationState", scripts, StringComparison.Ordinal);
+        Assert.Contains("$deploymentApplication = Get-IdentityApplicationState", scripts, StringComparison.Ordinal);
+        Assert.Contains("$deploymentServicePrincipal = Get-ApplicationServicePrincipalState", scripts, StringComparison.Ordinal);
+        Assert.Contains("$managedIdentityServicePrincipal = Get-ManagedIdentityServicePrincipalState", scripts, StringComparison.Ordinal);
+        Assert.Contains("Assert-CloudIdentitySeparation", scripts, StringComparison.Ordinal);
+        Assert.Contains(
+            "@($localApplicationAppId, $deploymentApplicationAppId, $cloudApplicationAppId, $managedIdentityServicePrincipalAppId)",
+            common,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "@($localApplicationObjectId, $deploymentApplicationObjectId, $cloudApplicationObjectId)",
+            common,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "@($deploymentServicePrincipalObjectId, $cloudServicePrincipalObjectId, $managedIdentityServicePrincipalObjectId)",
+            common,
+            StringComparison.Ordinal);
+        Assert.DoesNotMatch(
+            @"(?im)^\s*\[string\]::Equals\([^\r\n]*(?:principalId[^\r\n]*ClientId|ClientId[^\r\n]*principalId)",
+            scripts + common);
+        Assert.DoesNotMatch(
+            @"(?im)^\s*\[string\]::Equals\([^\r\n]*cloudServicePrincipal(?:Id|ObjectId)[^\r\n]*ClientId",
+            scripts + common);
+    }
+
+    [Fact]
+    public void ServicePrincipalCreationIsMinimalOwnerGatedAndBoundedlyValidated()
+    {
+        var bootstrap = ReadScript("11-bootstrap-cloud-entra.ps1");
+        var common = ReadScript("cloud-entra-common.ps1");
+        var document = Regex.Match(
+            bootstrap,
+            @"(?s)\$servicePrincipalDocument\s*=\s*\[ordered\]@\{(?<body>.*?)\r?\n\s*\}");
+
+        Assert.True(document.Success);
+        Assert.Equal("appId = $cloudAppClientId", document.Groups["body"].Value.Trim());
+        Assert.Contains("$servicePrincipalCreated = $false", bootstrap, StringComparison.Ordinal);
+        Assert.Contains("if ($servicePrincipalCreated)", bootstrap, StringComparison.Ordinal);
+        Assert.Matches(
+            @"(?s)if \(\$servicePrincipalCreated\).*?appRoleAssignmentRequired\s*=\s*\$true.*?-Method 'PATCH'.*?servicePrincipals/\$createdServicePrincipalId.*?Invoke-BoundedDiscovery",
+            bootstrap);
+
+        var servicePrincipalPost = bootstrap.IndexOf(
+            "-Url 'https://graph.microsoft.com/v1.0/servicePrincipals'",
+            StringComparison.Ordinal);
+        var ownerGate = bootstrap.LastIndexOf("if (-not $Apply)", servicePrincipalPost, StringComparison.Ordinal);
+        var servicePrincipalPatch = bootstrap.IndexOf("-Method 'PATCH'", servicePrincipalPost, StringComparison.Ordinal);
+        Assert.True(ownerGate >= 0 && ownerGate < servicePrincipalPost && servicePrincipalPost < servicePrincipalPatch);
+
+        Assert.Contains("servicePrincipalType:servicePrincipalType", common, StringComparison.Ordinal);
+        Assert.Contains("accountEnabled:accountEnabled", common, StringComparison.Ordinal);
+        Assert.Contains("appRoleAssignmentRequired:appRoleAssignmentRequired", common, StringComparison.Ordinal);
+        Assert.Contains("passwordCredentials:passwordCredentials", common, StringComparison.Ordinal);
+        Assert.Contains("keyCredentials:keyCredentials", common, StringComparison.Ordinal);
+        Assert.Contains("Assert-EmptyArrayProperty $servicePrincipal 'passwordCredentials'", common, StringComparison.Ordinal);
+        Assert.Contains("Assert-EmptyArrayProperty $servicePrincipal 'keyCredentials'", common, StringComparison.Ordinal);
+        Assert.Matches(
+            @"(?s)else\s*\{\s*\$cloudServicePrincipal\s*=\s*Assert-CloudServicePrincipalState",
+            bootstrap);
     }
 
     [Fact]
@@ -226,6 +307,9 @@ public sealed class CloudEntraPublicationFoundationTests
         Assert.Contains("public-home-valid", script, StringComparison.Ordinal);
         Assert.Contains("public-health-valid", script, StringComparison.Ordinal);
         Assert.Contains("anonymous-notes-challenge-valid", script, StringComparison.Ordinal);
+        Assert.Contains("'webapp', 'config', 'connection-string', 'list'", script, StringComparison.Ordinal);
+        Assert.Contains("if ($connectionStrings.Count -ne 0)", script, StringComparison.Ordinal);
+        Assert.Contains("connection-strings-absent", script, StringComparison.Ordinal);
         Assert.DoesNotContain("response.Content", script, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Headers.Location.ToString", script, StringComparison.OrdinalIgnoreCase);
     }
@@ -247,6 +331,25 @@ public sealed class CloudEntraPublicationFoundationTests
             example + module + scripts);
         Assert.DoesNotMatch(@"(?i)https://[a-z0-9-]+\.azurewebsites\.net", example + module);
         Assert.DoesNotMatch(@"(?i)https://[a-z0-9-]+\.vault\.azure\.net", example + module);
+    }
+
+    [Fact]
+    public void RepositoryContainsOnlyTheCanonicalBicepParameterExample()
+    {
+        Assert.False(File.Exists(GetRepositoryPath(".azure", "deployment-plan.md")));
+
+        var environmentDirectory = GetRepositoryPath("infra", "environments");
+        var examples = Directory.GetFiles(environmentDirectory, "*example*")
+            .Where(path => path.Contains("bicepparam", StringComparison.OrdinalIgnoreCase))
+            .Select(Path.GetFileName)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(new[] { "development.example.bicepparam" }, examples);
+        Assert.False(File.Exists(GetRepositoryPath(
+            "infra",
+            "environments",
+            "development.bicepparam.example")));
     }
 
     [Fact]
@@ -272,7 +375,10 @@ public sealed class CloudEntraPublicationFoundationTests
     private static string ReadScript(string fileName) =>
         ReadRepositoryFile("infra", "scripts", fileName);
 
-    private static string ReadRepositoryFile(params string[] relativeSegments)
+    private static string ReadRepositoryFile(params string[] relativeSegments) =>
+        File.ReadAllText(GetRepositoryPath(relativeSegments));
+
+    private static string GetRepositoryPath(params string[] relativeSegments)
     {
         var segments = new[]
         {
@@ -284,6 +390,6 @@ public sealed class CloudEntraPublicationFoundationTests
             ".."
         }.Concat(relativeSegments).ToArray();
 
-        return File.ReadAllText(Path.GetFullPath(Path.Combine(segments)));
+        return Path.GetFullPath(Path.Combine(segments));
     }
 }

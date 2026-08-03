@@ -23,7 +23,7 @@ Primary platform references: [Microsoft.Identity.Web certificateless authenticat
 
 ## Exact cloud application contract
 
-The owner-run scripts accept the real Resource Group name, Web App name, cloud registration display name, local-development application client ID, and deployment application client ID only as explicit private inputs. They resolve the existing Web App, its default hostname, its system-assigned principal, the active tenant, and the active subscription without printing them.
+The owner-run scripts accept the real Resource Group name, Web App name, cloud registration display name, local-development application client ID, and deployment application client ID only as explicit private inputs. They resolve both the application object ID and `appId` for the local, deployment, and cloud App Registrations; both the object ID and `appId` for the deployment and cloud Service Principals; and both the object ID and `appId` for the Web App Managed Identity Service Principal. Separation is checked only within matching identifier domains. They also resolve the existing Web App, its default hostname, the active tenant, and the active subscription without printing them.
 
 The accepted cloud registration has exactly:
 
@@ -63,7 +63,7 @@ pwsh ./infra/scripts/11-bootstrap-cloud-entra.ps1 `
   -DeploymentAppClientId '<private-guid>'
 ```
 
-Missing state ends with `cloud-entra-apply-required`. After private review, rerun with the same inputs and `-Apply`. That switch permits only creation of the exact registration, exact Enterprise Application, and exact Managed Identity federated credential. Matching state is reused. Unexpected existing state fails closed.
+Missing state ends with `cloud-entra-apply-required`. After private review, rerun with the same inputs and `-Apply`. That switch permits only creation of the exact registration, exact Enterprise Application, and exact Managed Identity federated credential. The Enterprise Application POST contains only its cloud `appId`; after bounded discovery, the newly created Service Principal alone is patched to require app-role assignment and then boundedly validated as enabled, credential-free application state. Matching state is reused. Unexpected existing state fails closed and is never silently repaired.
 
 After propagation, run read-only validation:
 
@@ -136,7 +136,7 @@ pwsh ./infra/scripts/14-cloud-application-validate.ps1 `
   -DeploymentAppClientId '<private-guid>'
 ```
 
-The read-only script verifies .NET 10, the system-assigned identity, exact runtime settings, `InMemory`, disabled publishing credentials, absence of direct Key Vault roles for runtime and deployment identities, and absence of cloud application credentials. It then uses bounded retries and timeouts to require HTTP 200 from `/` and `/health`. It requests `/Notes` without following redirects and accepts only the expected HTTPS Microsoft identity platform authorization challenge. It never prints the hostname, complete URL, redirect location, response body, token, or cookie.
+The read-only script verifies .NET 10, the system-assigned identity, exact runtime settings, `InMemory`, absence of connection strings, disabled publishing credentials, absence of direct Key Vault roles for runtime and deployment identities, and absence of cloud application credentials. It then uses bounded retries and timeouts to require HTTP 200 from `/` and `/health`. It requests `/Notes` without following redirects and accepts only the expected HTTPS Microsoft identity platform authorization challenge. It never prints the hostname, complete URL, redirect location, response body, token, or cookie.
 
 These checks establish a structural no-Key-Vault-access boundary: `Provider=InMemory`, the exact setting set contains no Key Vault reference or Key Vault option, and the Managed Identity lacks direct vault RBAC. They do not claim B4-D11 data-plane behavior.
 
