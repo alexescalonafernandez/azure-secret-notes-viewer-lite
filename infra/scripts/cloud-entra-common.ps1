@@ -45,7 +45,9 @@ function ConvertFrom-SanitizedJsonArray {
         throw $FailureReason
     }
 
-    Write-Output -NoEnumerate $result
+    foreach ($item in $result) {
+        Write-Output $item
+    }
 }
 
 function Invoke-AzureJsonObject {
@@ -67,7 +69,10 @@ function Invoke-AzureJsonArray {
 
     $lines = @(& az @Arguments 2>$null)
     if ($LASTEXITCODE -ne 0) { throw $FailureReason }
-    return ConvertFrom-SanitizedJsonArray -Lines $lines -FailureReason $FailureReason
+    $items = @(ConvertFrom-SanitizedJsonArray -Lines $lines -FailureReason $FailureReason)
+    foreach ($item in $items) {
+        Write-Output $item
+    }
 }
 
 function Invoke-AzureMutation {
@@ -86,6 +91,10 @@ function Get-RequiredStringProperty {
         [Parameter(Mandatory)][string] $Name,
         [Parameter(Mandatory)][string] $FailureReason
     )
+
+    if ($Object -is [System.Array] -or $Object -is [System.Collections.IEnumerable]) {
+        throw $FailureReason
+    }
 
     $property = $Object.PSObject.Properties[$Name]
     if (
@@ -142,7 +151,9 @@ function Get-RequiredArrayProperty {
         throw $FailureReason
     }
 
-    Write-Output -NoEnumerate @($property.Value)
+    foreach ($item in @($property.Value)) {
+        Write-Output $item
+    }
 }
 
 function Assert-EmptyArrayProperty {
@@ -396,7 +407,7 @@ function Assert-CloudIdentitySeparation {
 function Get-CloudApplicationMatches {
     param([Parameter(Mandatory)][string] $CloudAppRegistrationName)
 
-    $applications = Invoke-AzureJsonArray `
+    $applications = @(Invoke-AzureJsonArray `
         -FailureReason 'cloud-application-list-response-invalid' `
         -Arguments @(
             'ad', 'app', 'list',
@@ -404,9 +415,8 @@ function Get-CloudApplicationMatches {
             '--query', '[].{id:id,appId:appId,displayName:displayName}',
             '--output', 'json',
             '--only-show-errors'
-        )
+        ))
 
-    $matches = @()
     foreach ($application in $applications) {
         if ($null -eq $application -or $application -isnot [psobject]) {
             throw 'cloud-application-list-response-invalid'
@@ -417,11 +427,9 @@ function Get-CloudApplicationMatches {
         Assert-GuidString $id 'cloud-application-list-response-invalid'
         Assert-GuidString $appId 'cloud-application-list-response-invalid'
         if ([string]::Equals($displayName, $CloudAppRegistrationName, [StringComparison]::Ordinal)) {
-            $matches += $application
+            Write-Output $application
         }
     }
-
-    Write-Output -NoEnumerate $matches
 }
 
 function Assert-CloudApplicationState {
@@ -512,7 +520,7 @@ function Assert-CloudApplicationState {
 function Get-CloudServicePrincipalMatches {
     param([Parameter(Mandatory)][string] $AppId)
 
-    $servicePrincipals = Invoke-AzureJsonArray `
+    $servicePrincipals = @(Invoke-AzureJsonArray `
         -FailureReason 'cloud-service-principal-list-response-invalid' `
         -Arguments @(
             'ad', 'sp', 'list',
@@ -520,8 +528,22 @@ function Get-CloudServicePrincipalMatches {
             '--query', '[].{id:id,appId:appId,servicePrincipalType:servicePrincipalType}',
             '--output', 'json',
             '--only-show-errors'
-        )
-    Write-Output -NoEnumerate $servicePrincipals
+        ))
+    foreach ($servicePrincipal in $servicePrincipals) {
+        if ($null -eq $servicePrincipal -or $servicePrincipal -isnot [psobject]) {
+            throw 'cloud-service-principal-list-response-invalid'
+        }
+        $id = Get-RequiredStringProperty $servicePrincipal 'id' 'cloud-service-principal-list-response-invalid'
+        $resolvedAppId = Get-RequiredStringProperty $servicePrincipal 'appId' 'cloud-service-principal-list-response-invalid'
+        $type = Get-RequiredStringProperty $servicePrincipal 'servicePrincipalType' 'cloud-service-principal-list-response-invalid'
+        Assert-GuidString $id 'cloud-service-principal-list-response-invalid'
+        Assert-GuidString $resolvedAppId 'cloud-service-principal-list-response-invalid'
+        if (
+            -not [string]::Equals($resolvedAppId, $AppId, [StringComparison]::OrdinalIgnoreCase) -or
+            $type -cne 'Application'
+        ) { throw 'cloud-service-principal-list-response-invalid' }
+        Write-Output $servicePrincipal
+    }
 }
 
 function Assert-CloudServicePrincipalState {
@@ -556,7 +578,7 @@ function Assert-CloudServicePrincipalState {
 function Get-CloudFederatedCredentials {
     param([Parameter(Mandatory)][string] $ApplicationObjectId)
 
-    return Invoke-AzureJsonArray `
+    $credentials = @(Invoke-AzureJsonArray `
         -FailureReason 'cloud-federated-credential-list-response-invalid' `
         -Arguments @(
             'ad', 'app', 'federated-credential', 'list',
@@ -564,7 +586,10 @@ function Get-CloudFederatedCredentials {
             '--query', '[].{id:id,name:name,issuer:issuer,subject:subject,audiences:audiences}',
             '--output', 'json',
             '--only-show-errors'
-        )
+        ))
+    foreach ($credential in $credentials) {
+        Write-Output $credential
+    }
 }
 
 function Assert-ExactManagedIdentityFederation {
@@ -599,7 +624,7 @@ function Assert-NoDirectKeyVaultRole {
         [Parameter(Mandatory)][string] $FailureReason
     )
 
-    $assignments = Invoke-AzureJsonArray `
+    $assignments = @(Invoke-AzureJsonArray `
         -FailureReason 'key-vault-role-assignment-response-invalid' `
         -Arguments @(
             'role', 'assignment', 'list',
@@ -611,7 +636,7 @@ function Assert-NoDirectKeyVaultRole {
             '--query', '[].{scope:scope}',
             '--output', 'json',
             '--only-show-errors'
-        )
+        ))
     $direct = @($assignments | Where-Object {
         [string]::Equals(
             [string] $_.scope,
@@ -633,9 +658,11 @@ function Invoke-BoundedDiscovery {
 
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
         try {
-            $state = & $Discovery
-            if (& $IsReady $state) {
-                Write-Output $state
+            $state = @(& $Discovery)
+            if (& $IsReady -State $state) {
+                foreach ($item in $state) {
+                    Write-Output $item
+                }
                 return
             }
         }

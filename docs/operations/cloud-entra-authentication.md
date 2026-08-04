@@ -25,6 +25,8 @@ Primary platform references: [Microsoft.Identity.Web certificateless authenticat
 
 The owner-run scripts accept the real Resource Group name, Web App name, cloud registration display name, local-development application client ID, and deployment application client ID only as explicit private inputs. They resolve both the application object ID and `appId` for the local, deployment, and cloud App Registrations; both the object ID and `appId` for the deployment and cloud Service Principals; and both the object ID and `appId` for the Web App Managed Identity Service Principal. Separation is checked only within matching identifier domains. They also resolve the existing Web App, its default hostname, the active tenant, and the active subscription without printing them.
 
+All array-shaped CLI and Graph responses use a flat PowerShell pipeline contract. Consumers normalize with `@(...)` before checking cardinality, so empty, exact-single, and duplicate results remain distinguishable and duplicate state fails closed.
+
 The accepted cloud registration has exactly:
 
 - `signInAudience=AzureADMyOrg`;

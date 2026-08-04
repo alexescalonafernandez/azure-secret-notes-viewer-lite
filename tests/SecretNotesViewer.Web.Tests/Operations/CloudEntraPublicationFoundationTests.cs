@@ -51,6 +51,66 @@ public sealed class CloudEntraPublicationFoundationTests
     }
 
     [Fact]
+    public void CollectionProducersEmitFlatPipelineItemsAndConsumersNormalizeCardinality()
+    {
+        var common = ReadScript("cloud-entra-common.ps1");
+        foreach (var functionName in new[]
+        {
+            "ConvertFrom-SanitizedJsonArray",
+            "Invoke-AzureJsonArray",
+            "Get-CloudApplicationMatches",
+            "Get-CloudServicePrincipalMatches",
+            "Get-CloudFederatedCredentials",
+            "Invoke-BoundedDiscovery"
+        })
+        {
+            var functionBody = ReadPowerShellFunction(common, functionName);
+            Assert.DoesNotContain("Write-Output -NoEnumerate", functionBody, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("$state = @(& $Discovery)", common, StringComparison.Ordinal);
+        Assert.Contains("& $IsReady -State $state", common, StringComparison.Ordinal);
+        Assert.Contains("foreach ($item in $state)", common, StringComparison.Ordinal);
+        Assert.Contains("$Object.PSObject.Properties[$Name]", common, StringComparison.Ordinal);
+        Assert.Contains("$Object -is [System.Array]", common, StringComparison.Ordinal);
+        Assert.Contains("$Object -is [System.Collections.IEnumerable]", common, StringComparison.Ordinal);
+
+        foreach (var scriptName in new[]
+        {
+            "11-bootstrap-cloud-entra.ps1",
+            "12-validate-cloud-entra.ps1",
+            "13-cloud-runtime-config-deploy.ps1",
+            "14-cloud-application-validate.ps1",
+            "cloud-entra-common.ps1"
+        })
+        {
+            var script = ReadScript(scriptName);
+            Assert.DoesNotMatch(@"(?m)^\s*\$\w+\s*=\s*Invoke-AzureJsonArray", script);
+        }
+    }
+
+    [Fact]
+    public void SyntheticCollectionContractTestCoversZeroOneTwoAndDuplicates()
+    {
+        var script = ReadRepositoryFile(
+            "tests",
+            "PowerShell",
+            "Test-CloudEntraCollectionContracts.ps1");
+
+        Assert.Contains("@('[]')", script, StringComparison.Ordinal);
+        Assert.Contains("11111111-1111-1111-1111-111111111111", script, StringComparison.Ordinal);
+        Assert.Contains("22222222-2222-2222-2222-222222222222", script, StringComparison.Ordinal);
+        Assert.Contains("$empty.Count -eq 0", script, StringComparison.Ordinal);
+        Assert.Contains("$single.Count -eq 1", script, StringComparison.Ordinal);
+        Assert.Contains("$duplicate.Count -eq 2", script, StringComparison.Ordinal);
+        Assert.Contains("$single[0] -isnot [System.Array]", script, StringComparison.Ordinal);
+        Assert.Contains("$single[0].PSObject.Properties['id']", script, StringComparison.Ordinal);
+        Assert.Contains("Assert-ExactOneDiscoveryRejected $empty", script, StringComparison.Ordinal);
+        Assert.Contains("Assert-ExactOneDiscoveryRejected $duplicate", script, StringComparison.Ordinal);
+        Assert.Contains("synthetic-bounded-discovery-exact-one-valid", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BootstrapIsNonMutatingByDefaultAndFailClosed()
     {
         var script = ReadScript("11-bootstrap-cloud-entra.ps1");
@@ -374,6 +434,15 @@ public sealed class CloudEntraPublicationFoundationTests
 
     private static string ReadScript(string fileName) =>
         ReadRepositoryFile("infra", "scripts", fileName);
+
+    private static string ReadPowerShellFunction(string script, string functionName)
+    {
+        var match = Regex.Match(
+            script,
+            $@"(?ms)^function {Regex.Escape(functionName)}\s*\{{(?<body>.*?)(?=^function |\z)");
+        Assert.True(match.Success, $"PowerShell function '{functionName}' was not found.");
+        return match.Groups["body"].Value;
+    }
 
     private static string ReadRepositoryFile(params string[] relativeSegments) =>
         File.ReadAllText(GetRepositoryPath(relativeSegments));

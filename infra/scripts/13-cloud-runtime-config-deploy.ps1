@@ -143,7 +143,7 @@ try {
     $webApp = Get-ExistingWebAppState $ResourceGroupName $WebAppName $subscriptionId
     $webAppId = Get-RequiredStringProperty $webApp 'id' 'web-app-response-invalid'
     $webAppPrincipalId = Get-RequiredStringProperty $webApp 'principalId' 'web-app-response-invalid'
-    $settings = Invoke-AzureJsonArray `
+    $settings = @(Invoke-AzureJsonArray `
         -FailureReason 'cloud-runtime-settings-response-invalid' `
         -Arguments @(
             'webapp', 'config', 'appsettings', 'list',
@@ -153,7 +153,7 @@ try {
             '--query', '[].{name:name,value:value}',
             '--output', 'json',
             '--only-show-errors'
-        )
+        ))
     $expectedSettings = [ordered]@{
         ASPNETCORE_ENVIRONMENT = 'Production'
         AzureAd__TenantId = $CloudTenantId
@@ -177,7 +177,7 @@ try {
     Write-Output 'in-memory-provider-valid'
     Write-Output 'cloud-runtime-credentials-secretless'
 
-    $connectionStrings = Invoke-AzureJsonArray `
+    $connectionStrings = @(Invoke-AzureJsonArray `
         -FailureReason 'connection-strings-response-invalid' `
         -Arguments @(
             'webapp', 'config', 'connection-string', 'list',
@@ -187,7 +187,7 @@ try {
             '--query', '[].{name:name}',
             '--output', 'json',
             '--only-show-errors'
-        )
+        ))
     if ($connectionStrings.Count -ne 0) { throw 'connection-string-present' }
 
     foreach ($policyName in @('scm', 'ftp')) {

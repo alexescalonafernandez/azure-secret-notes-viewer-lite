@@ -191,7 +191,7 @@ try {
             -Url "https://graph.microsoft.com/v1.0/servicePrincipals/$createdServicePrincipalId" `
             -Document $servicePrincipalPatchDocument `
             -FailureReason 'cloud-service-principal-update-failed'
-        $cloudServicePrincipal = Invoke-BoundedDiscovery `
+        $validatedServicePrincipals = @(Invoke-BoundedDiscovery `
             -FailureReason 'cloud-service-principal-validation-failed' `
             -Discovery {
                 $validatedServicePrincipal = Assert-CloudServicePrincipalState $cloudAppClientId
@@ -206,7 +206,11 @@ try {
                 )) { throw 'cloud-service-principal-validation-failed' }
                 return $validatedServicePrincipal
             } `
-            -IsReady { param($state) $null -ne $state }
+            -IsReady { param($state) @($state).Count -eq 1 })
+        if ($validatedServicePrincipals.Count -ne 1) {
+            throw 'cloud-service-principal-validation-failed'
+        }
+        $cloudServicePrincipal = $validatedServicePrincipals[0]
     }
     else {
         $cloudServicePrincipal = Assert-CloudServicePrincipalState $cloudAppClientId

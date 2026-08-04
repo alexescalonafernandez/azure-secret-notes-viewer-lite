@@ -99,7 +99,7 @@ try {
     ) { throw 'site-config-invalid' }
     Write-Output 'dotnet-runtime-valid'
 
-    $settings = Invoke-AzureJsonArray `
+    $settings = @(Invoke-AzureJsonArray `
         -FailureReason 'cloud-runtime-settings-response-invalid' `
         -Arguments @(
             'webapp', 'config', 'appsettings', 'list',
@@ -109,7 +109,7 @@ try {
             '--query', '[].{name:name,value:value}',
             '--output', 'json',
             '--only-show-errors'
-        )
+        ))
     $expectedSettings = [ordered]@{
         ASPNETCORE_ENVIRONMENT = 'Production'
         AzureAd__TenantId = $CloudTenantId
@@ -132,7 +132,7 @@ try {
     Write-Output 'cloud-runtime-settings-valid'
     Write-Output 'in-memory-provider-valid'
 
-    $connectionStrings = Invoke-AzureJsonArray `
+    $connectionStrings = @(Invoke-AzureJsonArray `
         -FailureReason 'connection-strings-response-invalid' `
         -Arguments @(
             'webapp', 'config', 'connection-string', 'list',
@@ -142,7 +142,7 @@ try {
             '--query', '[].{name:name}',
             '--output', 'json',
             '--only-show-errors'
-        )
+        ))
     if ($connectionStrings.Count -ne 0) { throw 'connection-string-present' }
     Write-Output 'connection-strings-absent'
 
