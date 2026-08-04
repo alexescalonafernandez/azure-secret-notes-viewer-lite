@@ -233,9 +233,19 @@ function Get-CloudServicePrincipals([string] $CloudAppClientId) {
         ) {
             throw 'cloud-service-principal-list-response-invalid'
         }
-
         Write-Output $item
     }
+}
+
+function Get-CloudServicePrincipal([string] $CloudAppClientId) {
+    return Invoke-AzMap -Reason 'cloud-service-principal-response-invalid' -Arguments @(
+        'ad', 'sp', 'show',
+        '--id', $CloudAppClientId,
+        '--query',
+        '{id:id,appId:appId,servicePrincipalType:servicePrincipalType,accountEnabled:accountEnabled,appRoleAssignmentRequired:appRoleAssignmentRequired,passwordCredentials:passwordCredentials,keyCredentials:keyCredentials}',
+        '--output', 'json',
+        '--only-show-errors'
+    )
 }
 
 function Get-FederatedCredentials([string] $ApplicationObjectId) {
@@ -383,25 +393,29 @@ function Get-CloudApplicationConvergencePlan {
     }
 }
 
-function Assert-CloudServicePrincipalState {
+function Get-CloudServicePrincipalConvergencePlan {
     param(
         [System.Collections.IDictionary] $ServicePrincipal,
         [string] $CloudAppClientId
     )
 
-    $id = Read-String $ServicePrincipal 'id' 'cloud-service-principal-response-invalid'
+    $objectId = Read-String $ServicePrincipal 'id' 'cloud-service-principal-response-invalid'
     $appId = Read-String $ServicePrincipal 'appId' 'cloud-service-principal-response-invalid'
-    Assert-Guid $id 'cloud-service-principal-response-invalid'
+    $type = Read-String $ServicePrincipal 'servicePrincipalType' 'cloud-service-principal-response-invalid'
+    $accountEnabled = Read-Bool $ServicePrincipal 'accountEnabled' 'cloud-service-principal-response-invalid'
+    $assignmentRequired = Read-Bool `
+        $ServicePrincipal 'appRoleAssignmentRequired' 'cloud-assignment-required-invalid'
+
+    Assert-Guid $objectId 'cloud-service-principal-response-invalid'
     Assert-Guid $appId 'cloud-service-principal-response-invalid'
 
     if (
         -not [string]::Equals($appId, $CloudAppClientId, [StringComparison]::OrdinalIgnoreCase) -or
-        (Read-String $ServicePrincipal 'servicePrincipalType' 'cloud-service-principal-response-invalid') -cne 'Application' -or
-        -not (Read-Bool $ServicePrincipal 'accountEnabled' 'cloud-service-principal-response-invalid') -or
-        -not (Read-Bool $ServicePrincipal 'appRoleAssignmentRequired' 'cloud-assignment-required-invalid')
+        $type -cne 'Application'
     ) {
         throw 'cloud-service-principal-configuration-invalid'
     }
+    if (-not $accountEnabled) { throw 'cloud-service-principal-disabled' }
 
     if (@(As-Array $ServicePrincipal['passwordCredentials'] 'cloud-service-principal-password-response-invalid').Count -ne 0) {
         throw 'cloud-service-principal-password-present'
@@ -410,6 +424,23 @@ function Assert-CloudServicePrincipalState {
         throw 'cloud-service-principal-key-present'
     }
 
+    return [ordered]@{
+        ObjectId = $objectId
+        NeedsPatch = (-not $assignmentRequired)
+    }
+}
+
+function Assert-CloudServicePrincipalState {
+    param(
+        [System.Collections.IDictionary] $ServicePrincipal,
+        [string] $CloudAppClientId
+    )
+
+    $plan = Get-CloudServicePrincipalConvergencePlan `
+        $ServicePrincipal $CloudAppClientId
+    if ([bool] $plan['NeedsPatch']) {
+        throw 'cloud-service-principal-configuration-invalid'
+    }
     return $ServicePrincipal
 }
 
@@ -677,54 +708,67 @@ try {
 
     if ($servicePrincipals.Count -ne 1) { throw 'cloud-service-principal-count-invalid' }
 
-    $createdServicePrincipalId = Read-String `
+    $listedServicePrincipalId = Read-String `
         $servicePrincipals[0] 'id' 'cloud-service-principal-response-invalid'
+    $cloudServicePrincipal = Get-CloudServicePrincipal $cloudAppClientId
+    $servicePrincipalPlan = Get-CloudServicePrincipalConvergencePlan `
+        $cloudServicePrincipal $cloudAppClientId
 
     if ($servicePrincipalCreated) {
+        Assert-Guid $listedServicePrincipalId 'cloud-service-principal-create-invalid'
+    }
+
+    if (-not [string]::Equals(
+        [string] $servicePrincipalPlan['ObjectId'],
+        $listedServicePrincipalId,
+        [StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw 'cloud-service-principal-response-invalid'
+    }
+
+    if ([bool] $servicePrincipalPlan['NeedsPatch']) {
+        if (-not $Apply) {
+            Write-Output 'cloud-entra-apply-required'
+            return
+        }
+
         $servicePrincipalPatchDocument = [ordered]@{
             appRoleAssignmentRequired = $true
         }
         Invoke-JsonMutation `
             -Method 'PATCH' `
-            -Url "https://graph.microsoft.com/v1.0/servicePrincipals/$createdServicePrincipalId" `
+            -Url "https://graph.microsoft.com/v1.0/servicePrincipals/$listedServicePrincipalId" `
             -Document $servicePrincipalPatchDocument `
             -Reason 'cloud-service-principal-update-failed'
 
-        $validatedServicePrincipals = @(
-            Invoke-BoundedDiscovery `
-                -Read {
-                    $candidate = Invoke-AzMap -Reason 'cloud-service-principal-response-invalid' -Arguments @(
-                        'ad', 'sp', 'show', '--id', $cloudAppClientId,
-                        '--query',
-                        '{id:id,appId:appId,servicePrincipalType:servicePrincipalType,accountEnabled:accountEnabled,appRoleAssignmentRequired:appRoleAssignmentRequired,passwordCredentials:passwordCredentials,keyCredentials:keyCredentials}',
-                        '--output', 'json', '--only-show-errors'
-                    )
-                    $candidate = Assert-CloudServicePrincipalState $candidate $cloudAppClientId
-                    if (-not [string]::Equals(
-                        (Read-String $candidate 'id' 'cloud-service-principal-validation-failed'),
-                        $createdServicePrincipalId,
+        $cloudServicePrincipal = Invoke-BoundedDiscovery `
+            -Read {
+                $candidate = Get-CloudServicePrincipal $cloudAppClientId
+                $candidatePlan = Get-CloudServicePrincipalConvergencePlan `
+                    $candidate $cloudAppClientId
+                if (
+                    -not [bool] $candidatePlan['NeedsPatch'] -and
+                    [string]::Equals(
+                        [string] $candidatePlan['ObjectId'],
+                        $listedServicePrincipalId,
                         [StringComparison]::OrdinalIgnoreCase
-                    )) {
-                        throw 'cloud-service-principal-validation-failed'
-                    }
+                    )
+                ) {
                     Write-Output $candidate
-                } `
-                -Reason 'cloud-service-principal-validation-failed'
-        )
-        if ($validatedServicePrincipals.Count -ne 1) {
+                }
+            } `
+            -Reason 'cloud-service-principal-validation-failed'
+        $servicePrincipalPlan = Get-CloudServicePrincipalConvergencePlan `
+            $cloudServicePrincipal $cloudAppClientId
+        if ([bool] $servicePrincipalPlan['NeedsPatch']) {
             throw 'cloud-service-principal-validation-failed'
         }
-        $cloudServicePrincipal = $validatedServicePrincipals[0]
+        $cloudServicePrincipal = Assert-CloudServicePrincipalState `
+            $cloudServicePrincipal $cloudAppClientId
     }
     else {
         $cloudServicePrincipal = Assert-CloudServicePrincipalState `
-            (Invoke-AzMap -Reason 'cloud-service-principal-response-invalid' -Arguments @(
-                'ad', 'sp', 'show', '--id', $cloudAppClientId,
-                '--query',
-                '{id:id,appId:appId,servicePrincipalType:servicePrincipalType,accountEnabled:accountEnabled,appRoleAssignmentRequired:appRoleAssignmentRequired,passwordCredentials:passwordCredentials,keyCredentials:keyCredentials}',
-                '--output', 'json', '--only-show-errors'
-            )) `
-            $cloudAppClientId
+            $cloudServicePrincipal $cloudAppClientId
     }
 
     $cloudSpObjectId = Read-String $cloudServicePrincipal 'id' 'cloud-service-principal-response-invalid'
