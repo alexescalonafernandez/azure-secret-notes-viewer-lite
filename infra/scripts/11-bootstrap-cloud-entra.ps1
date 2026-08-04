@@ -18,17 +18,51 @@ $PSNativeCommandUseErrorActionPreference = $false
 
 function Assert-Guid([string] $Value, [string] $Reason) {
     $parsed = [Guid]::Empty
-    if (-not [Guid]::TryParse($Value, [ref] $parsed) -or $parsed -eq [Guid]::Empty) { throw $Reason }
+    if (-not [Guid]::TryParse($Value, [ref] $parsed) -or $parsed -eq [Guid]::Empty) {
+        throw $Reason
+    }
 }
 
-function Read-String([System.Collections.IDictionary] $Map, [string] $Key, [string] $Reason) {
+function Read-String(
+    [System.Collections.IDictionary] $Map,
+    [string] $Key,
+    [string] $Reason
+) {
     $value = $Map[$Key]
-    if ($value -isnot [string] -or [string]::IsNullOrWhiteSpace($value)) { throw $Reason }
+    if ($value -isnot [string] -or [string]::IsNullOrWhiteSpace($value)) {
+        throw $Reason
+    }
     return [string] $value
 }
 
-function Read-Bool([System.Collections.IDictionary] $Map, [string] $Key, [string] $Reason) {
+function Read-OptionalString(
+    [System.Collections.IDictionary] $Map,
+    [string] $Key,
+    [string] $Reason
+) {
     $value = $Map[$Key]
+    if ($null -eq $value) { return $null }
+    if ($value -isnot [string]) { throw $Reason }
+    return [string] $value
+}
+
+function Read-Bool(
+    [System.Collections.IDictionary] $Map,
+    [string] $Key,
+    [string] $Reason
+) {
+    $value = $Map[$Key]
+    if ($value -isnot [bool]) { throw $Reason }
+    return [bool] $value
+}
+
+function Read-OptionalBool(
+    [System.Collections.IDictionary] $Map,
+    [string] $Key,
+    [string] $Reason
+) {
+    $value = $Map[$Key]
+    if ($null -eq $value) { return $null }
     if ($value -isnot [bool]) { throw $Reason }
     return [bool] $value
 }
@@ -47,9 +81,14 @@ function As-Map($Value, [string] $Reason) {
 
 function ConvertTo-Map([string[]] $Lines, [string] $Reason) {
     try {
-        $value = ConvertFrom-Json -InputObject ($Lines -join [Environment]::NewLine) -AsHashtable -NoEnumerate
+        $value = ConvertFrom-Json `
+            -InputObject ($Lines -join [Environment]::NewLine) `
+            -AsHashtable `
+            -NoEnumerate
     }
-    catch { throw $Reason }
+    catch {
+        throw $Reason
+    }
 
     if ($value -isnot [System.Collections.IDictionary]) { throw $Reason }
     return $value
@@ -57,9 +96,14 @@ function ConvertTo-Map([string[]] $Lines, [string] $Reason) {
 
 function ConvertTo-List([string[]] $Lines, [string] $Reason) {
     try {
-        $value = ConvertFrom-Json -InputObject ($Lines -join [Environment]::NewLine) -AsHashtable -NoEnumerate
+        $value = ConvertFrom-Json `
+            -InputObject ($Lines -join [Environment]::NewLine) `
+            -AsHashtable `
+            -NoEnumerate
     }
-    catch { throw $Reason }
+    catch {
+        throw $Reason
+    }
 
     if ($value -isnot [System.Array]) { throw $Reason }
     foreach ($item in $value) {
@@ -77,7 +121,9 @@ function Invoke-AzMap([string[]] $Arguments, [string] $Reason) {
 function Invoke-AzList([string[]] $Arguments, [string] $Reason) {
     $lines = @(& az @Arguments 2>$null)
     if ($LASTEXITCODE -ne 0) { throw $Reason }
-    foreach ($item in @(ConvertTo-List $lines $Reason)) { Write-Output $item }
+    foreach ($item in @(ConvertTo-List $lines $Reason)) {
+        Write-Output $item
+    }
 }
 
 function Invoke-JsonMutation {
@@ -95,6 +141,7 @@ function Invoke-JsonMutation {
             ($Document | ConvertTo-Json -Depth 12),
             [Text.UTF8Encoding]::new($false)
         )
+
         $arguments = @(
             'rest',
             '--method', $Method,
@@ -113,7 +160,11 @@ function Invoke-JsonMutation {
 }
 
 function Invoke-BoundedDiscovery {
-    param([scriptblock] $Read, [string] $Reason, [int] $MaxAttempts = 6)
+    param(
+        [scriptblock] $Read,
+        [string] $Reason,
+        [int] $MaxAttempts = 6
+    )
 
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
         try {
@@ -125,7 +176,7 @@ function Invoke-BoundedDiscovery {
             if ($attempt -eq $MaxAttempts) { throw $Reason }
         }
 
-        Start-Sleep -Seconds 5
+        if ($attempt -lt $MaxAttempts) { Start-Sleep -Seconds 5 }
     }
 
     throw $Reason
@@ -150,6 +201,17 @@ function Get-CloudApplications {
     }
 }
 
+function Get-CloudApplication([string] $CloudAppClientId) {
+    return Invoke-AzMap -Reason 'cloud-application-response-invalid' -Arguments @(
+        'ad', 'app', 'show',
+        '--id', $CloudAppClientId,
+        '--query',
+        '{id:id,appId:appId,displayName:displayName,signInAudience:signInAudience,passwordCredentials:passwordCredentials,keyCredentials:keyCredentials,requiredResourceAccess:requiredResourceAccess,appRoles:appRoles,web:web,spa:spa,publicClient:publicClient,isFallbackPublicClient:isFallbackPublicClient}',
+        '--output', 'json',
+        '--only-show-errors'
+    )
+}
+
 function Get-CloudServicePrincipals([string] $CloudAppClientId) {
     $items = @(Invoke-AzList -Reason 'cloud-service-principal-list-response-invalid' -Arguments @(
         'ad', 'sp', 'list',
@@ -168,7 +230,9 @@ function Get-CloudServicePrincipals([string] $CloudAppClientId) {
         if (
             -not [string]::Equals($appId, $CloudAppClientId, [StringComparison]::OrdinalIgnoreCase) -or
             $type -cne 'Application'
-        ) { throw 'cloud-service-principal-list-response-invalid' }
+        ) {
+            throw 'cloud-service-principal-list-response-invalid'
+        }
 
         Write-Output $item
     }
@@ -181,10 +245,24 @@ function Get-FederatedCredentials([string] $ApplicationObjectId) {
         '--query', '[].{id:id,name:name,issuer:issuer,subject:subject,audiences:audiences}',
         '--output', 'json',
         '--only-show-errors'
-    ))) { Write-Output $item }
+    ))) {
+        Write-Output $item
+    }
 }
 
-function Assert-CloudApplication {
+function New-ReaderRoleDocument([string] $RoleId) {
+    Assert-Guid $RoleId 'cloud-app-role-invalid'
+    return [ordered]@{
+        id = $RoleId
+        displayName = 'SecretNotes.Reader'
+        description = 'Read the synthetic secret notes catalog.'
+        value = 'SecretNotes.Reader'
+        allowedMemberTypes = @('User')
+        isEnabled = $true
+    }
+}
+
+function Get-CloudApplicationConvergencePlan {
     param(
         [System.Collections.IDictionary] $Application,
         [string] $ExpectedSignInUri,
@@ -213,66 +291,96 @@ function Assert-CloudApplication {
         throw 'cloud-api-permission-present'
     }
 
-    $fallbackPublicClient = $Application['isFallbackPublicClient']
-    if ($null -ne $fallbackPublicClient -and $fallbackPublicClient -isnot [bool]) {
-        throw 'cloud-public-client-configuration-invalid'
-    }
+    $fallbackPublicClient = Read-OptionalBool `
+        $Application 'isFallbackPublicClient' 'cloud-public-client-configuration-invalid'
     if ($fallbackPublicClient -eq $true) { throw 'cloud-public-client-enabled' }
-
-    $web = As-Map $Application['web'] 'cloud-web-configuration-invalid'
-    if ($null -eq $web) { throw 'cloud-web-configuration-invalid' }
-
-    $redirectUris = @(As-Array $web['redirectUris'] 'cloud-web-configuration-invalid')
-    if (
-        $redirectUris.Count -ne 2 -or
-        $redirectUris -notcontains $ExpectedSignInUri -or
-        $redirectUris -notcontains $ExpectedSignOutCallbackUri -or
-        @($redirectUris | Where-Object { $_ -isnot [string] -or $_ -match '(?i)localhost' }).Count -ne 0
-    ) { throw 'cloud-redirect-uri-mismatch' }
-
-    if ((Read-String $web 'logoutUrl' 'cloud-logout-configuration-invalid') -cne $ExpectedLogoutUri) {
-        throw 'cloud-logout-configuration-invalid'
-    }
-
-    $implicit = As-Map $web['implicitGrantSettings'] 'cloud-implicit-grant-invalid'
-    if ($null -ne $implicit) {
-        foreach ($key in @('enableAccessTokenIssuance', 'enableIdTokenIssuance')) {
-            $value = $implicit[$key]
-            if ($null -ne $value -and $value -isnot [bool]) { throw 'cloud-implicit-grant-invalid' }
-            if ($value -eq $true) { throw 'cloud-implicit-grant-enabled' }
-        }
-    }
 
     $publicClient = As-Map $Application['publicClient'] 'cloud-public-client-configuration-invalid'
     if (
         $null -ne $publicClient -and
         @(As-Array $publicClient['redirectUris'] 'cloud-public-client-configuration-invalid').Count -ne 0
-    ) { throw 'cloud-public-client-redirect-uri-present' }
+    ) {
+        throw 'cloud-public-client-redirect-uri-present'
+    }
 
     $spa = As-Map $Application['spa'] 'cloud-spa-configuration-invalid'
     if (
         $null -ne $spa -and
         @(As-Array $spa['redirectUris'] 'cloud-spa-configuration-invalid').Count -ne 0
-    ) { throw 'cloud-spa-redirect-uri-present' }
+    ) {
+        throw 'cloud-spa-redirect-uri-present'
+    }
+
+    $needsPatch = $false
+    $web = As-Map $Application['web'] 'cloud-web-configuration-invalid'
+    if ($null -eq $web) {
+        $needsPatch = $true
+        $redirectUris = @()
+        $logoutUrl = $null
+        $implicit = $null
+    }
+    else {
+        $redirectUris = @(As-Array $web['redirectUris'] 'cloud-web-configuration-invalid')
+        $logoutUrl = Read-OptionalString $web 'logoutUrl' 'cloud-logout-configuration-invalid'
+        $implicit = As-Map $web['implicitGrantSettings'] 'cloud-implicit-grant-invalid'
+    }
+
+    if ($redirectUris.Count -eq 0) {
+        $needsPatch = $true
+    }
+    elseif (
+        $redirectUris.Count -ne 2 -or
+        $redirectUris -notcontains $ExpectedSignInUri -or
+        $redirectUris -notcontains $ExpectedSignOutCallbackUri -or
+        @($redirectUris | Where-Object { $_ -isnot [string] -or $_ -match '(?i)localhost' }).Count -ne 0
+    ) {
+        throw 'cloud-redirect-uri-mismatch'
+    }
+
+    if ([string]::IsNullOrWhiteSpace($logoutUrl)) {
+        $needsPatch = $true
+    }
+    elseif ($logoutUrl -cne $ExpectedLogoutUri) {
+        throw 'cloud-logout-configuration-invalid'
+    }
+
+    if ($null -ne $implicit) {
+        foreach ($key in @('enableAccessTokenIssuance', 'enableIdTokenIssuance')) {
+            $value = Read-OptionalBool $implicit $key 'cloud-implicit-grant-invalid'
+            if ($value -eq $true) { throw 'cloud-implicit-grant-enabled' }
+        }
+    }
 
     $roles = @(As-Array $Application['appRoles'] 'cloud-app-role-invalid')
-    if ($roles.Count -ne 1 -or $roles[0] -isnot [System.Collections.IDictionary]) {
+    if ($roles.Count -eq 0) {
+        $needsPatch = $true
+        $roleDocument = New-ReaderRoleDocument ([Guid]::NewGuid().ToString())
+    }
+    elseif ($roles.Count -eq 1 -and $roles[0] -is [System.Collections.IDictionary]) {
+        $role = $roles[0]
+        $roleId = Read-String $role 'id' 'cloud-app-role-invalid'
+        Assert-Guid $roleId 'cloud-app-role-invalid'
+        $memberTypes = @(As-Array $role['allowedMemberTypes'] 'cloud-app-role-invalid')
+        if (
+            (Read-String $role 'displayName' 'cloud-app-role-invalid') -cne 'SecretNotes.Reader' -or
+            (Read-String $role 'value' 'cloud-app-role-invalid') -cne 'SecretNotes.Reader' -or
+            (Read-String $role 'description' 'cloud-app-role-invalid') -cne 'Read the synthetic secret notes catalog.' -or
+            -not (Read-Bool $role 'isEnabled' 'cloud-app-role-invalid') -or
+            $memberTypes.Count -ne 1 -or
+            $memberTypes[0] -cne 'User'
+        ) {
+            throw 'cloud-app-role-invalid'
+        }
+        $roleDocument = New-ReaderRoleDocument $roleId
+    }
+    else {
         throw 'cloud-app-role-invalid'
     }
 
-    $role = $roles[0]
-    Assert-Guid (Read-String $role 'id' 'cloud-app-role-invalid') 'cloud-app-role-invalid'
-    $memberTypes = @(As-Array $role['allowedMemberTypes'] 'cloud-app-role-invalid')
-    if (
-        (Read-String $role 'displayName' 'cloud-app-role-invalid') -cne 'SecretNotes.Reader' -or
-        (Read-String $role 'value' 'cloud-app-role-invalid') -cne 'SecretNotes.Reader' -or
-        (Read-String $role 'description' 'cloud-app-role-invalid') -cne 'Read the synthetic secret notes catalog.' -or
-        -not (Read-Bool $role 'isEnabled' 'cloud-app-role-invalid') -or
-        $memberTypes.Count -ne 1 -or
-        $memberTypes[0] -cne 'User'
-    ) { throw 'cloud-app-role-invalid' }
-
-    return $Application
+    return [ordered]@{
+        NeedsPatch = $needsPatch
+        RoleDocument = $roleDocument
+    }
 }
 
 function Assert-CloudServicePrincipalState {
@@ -291,7 +399,9 @@ function Assert-CloudServicePrincipalState {
         (Read-String $ServicePrincipal 'servicePrincipalType' 'cloud-service-principal-response-invalid') -cne 'Application' -or
         -not (Read-Bool $ServicePrincipal 'accountEnabled' 'cloud-service-principal-response-invalid') -or
         -not (Read-Bool $ServicePrincipal 'appRoleAssignmentRequired' 'cloud-assignment-required-invalid')
-    ) { throw 'cloud-service-principal-configuration-invalid' }
+    ) {
+        throw 'cloud-service-principal-configuration-invalid'
+    }
 
     if (@(As-Array $ServicePrincipal['passwordCredentials'] 'cloud-service-principal-password-response-invalid').Count -ne 0) {
         throw 'cloud-service-principal-password-present'
@@ -325,7 +435,9 @@ function Assert-FederatedCredential {
         (Read-String $Credential 'subject' 'cloud-federated-credential-invalid') -cne $ExpectedSubject -or
         $audiences.Count -ne 1 -or
         $audiences[0] -cne 'api://AzureADTokenExchange'
-    ) { throw 'cloud-federated-credential-mismatch' }
+    ) {
+        throw 'cloud-federated-credential-mismatch'
+    }
 }
 
 try {
@@ -333,7 +445,9 @@ try {
         $ResourceGroupName -notmatch '^[A-Za-z0-9_.()-]{1,90}$' -or
         $WebAppName -notmatch '^[A-Za-z0-9][A-Za-z0-9-]{1,58}[A-Za-z0-9]$' -or
         $CloudAppRegistrationName -notmatch '^[A-Za-z0-9][A-Za-z0-9 ._-]{1,118}[A-Za-z0-9]$'
-    ) { throw 'private-input-invalid' }
+    ) {
+        throw 'private-input-invalid'
+    }
 
     Assert-Guid $LocalDevelopmentAppClientId 'local-development-identity-input-invalid'
     Assert-Guid $DeploymentAppClientId 'deployment-identity-input-invalid'
@@ -341,9 +455,13 @@ try {
         $LocalDevelopmentAppClientId,
         $DeploymentAppClientId,
         [StringComparison]::OrdinalIgnoreCase
-    )) { throw 'local-deployment-identity-reused' }
+    )) {
+        throw 'local-deployment-identity-reused'
+    }
 
-    if ($null -eq (Get-Command az -ErrorAction SilentlyContinue)) { throw 'azure-cli-unavailable' }
+    if ($null -eq (Get-Command az -ErrorAction SilentlyContinue)) {
+        throw 'azure-cli-unavailable'
+    }
 
     $context = Invoke-AzMap -Reason 'subscription-context-invalid' -Arguments @(
         'account', 'show',
@@ -382,7 +500,9 @@ try {
         $webAppKind -notmatch '(?i)(^|,)linux($|,)' -or
         (Read-String $webApp 'identityType' 'web-app-response-invalid') -notmatch '(^|,)SystemAssigned($|,)' -or
         $hostName -notmatch '^[A-Za-z0-9][A-Za-z0-9.-]{1,251}[A-Za-z0-9]$'
-    ) { throw 'web-app-response-invalid' }
+    ) {
+        throw 'web-app-response-invalid'
+    }
 
     $localApplication = Invoke-AzMap -Reason 'local-development-application-response-invalid' -Arguments @(
         'ad', 'app', 'show', '--id', $LocalDevelopmentAppClientId,
@@ -417,7 +537,9 @@ try {
         $deploymentAppObjectId, $deploymentAppId,
         $deploymentSpObjectId, $deploymentSpAppId,
         $managedIdentityObjectId, $managedIdentityAppId
-    )) { Assert-Guid $value 'identity-response-invalid' }
+    )) {
+        Assert-Guid $value 'identity-response-invalid'
+    }
 
     if (
         -not [string]::Equals($localAppId, $LocalDevelopmentAppClientId, [StringComparison]::OrdinalIgnoreCase) -or
@@ -426,7 +548,9 @@ try {
         (Read-String $deploymentServicePrincipal 'servicePrincipalType' 'deployment-service-principal-response-invalid') -cne 'Application' -or
         -not [string]::Equals($managedIdentityObjectId, $webAppPrincipalId, [StringComparison]::OrdinalIgnoreCase) -or
         (Read-String $managedIdentityServicePrincipal 'servicePrincipalType' 'managed-identity-service-principal-response-invalid') -cne 'ManagedIdentity'
-    ) { throw 'identity-object-resolution-mismatch' }
+    ) {
+        throw 'identity-object-resolution-mismatch'
+    }
 
     $expectedSignInUri = "https://$hostName/signin-oidc"
     $expectedSignOutCallbackUri = "https://$hostName/signout-callback-oidc"
@@ -448,14 +572,7 @@ try {
             requiredResourceAccess = @()
             passwordCredentials = @()
             keyCredentials = @()
-            appRoles = @([ordered]@{
-                id = [Guid]::NewGuid().ToString()
-                displayName = 'SecretNotes.Reader'
-                description = 'Read the synthetic secret notes catalog.'
-                value = 'SecretNotes.Reader'
-                allowedMemberTypes = @('User')
-                isEnabled = $true
-            })
+            appRoles = @(New-ReaderRoleDocument ([Guid]::NewGuid().ToString()))
             web = [ordered]@{
                 redirectUris = @($expectedSignInUri, $expectedSignOutCallbackUri)
                 logoutUrl = $expectedLogoutUri
@@ -483,14 +600,47 @@ try {
     if ($applications.Count -ne 1) { throw 'cloud-application-count-invalid' }
 
     $cloudAppClientId = Read-String $applications[0] 'appId' 'cloud-application-response-invalid'
-    $cloudApplication = Invoke-AzMap -Reason 'cloud-application-response-invalid' -Arguments @(
-        'ad', 'app', 'show', '--id', $cloudAppClientId,
-        '--query',
-        '{id:id,appId:appId,displayName:displayName,signInAudience:signInAudience,passwordCredentials:passwordCredentials,keyCredentials:keyCredentials,requiredResourceAccess:requiredResourceAccess,appRoles:appRoles,web:web,spa:spa,publicClient:publicClient,isFallbackPublicClient:isFallbackPublicClient}',
-        '--output', 'json', '--only-show-errors'
-    )
-    $cloudApplication = Assert-CloudApplication `
+    $cloudApplication = Get-CloudApplication $cloudAppClientId
+    $applicationPlan = Get-CloudApplicationConvergencePlan `
         $cloudApplication $expectedSignInUri $expectedSignOutCallbackUri $expectedLogoutUri
+    $cloudAppObjectId = Read-String $cloudApplication 'id' 'cloud-application-response-invalid'
+
+    if ([bool] $applicationPlan['NeedsPatch']) {
+        if (-not $Apply) {
+            Write-Output 'cloud-entra-apply-required'
+            return
+        }
+
+        $applicationPatchDocument = [ordered]@{
+            web = [ordered]@{
+                redirectUris = @($expectedSignInUri, $expectedSignOutCallbackUri)
+                logoutUrl = $expectedLogoutUri
+                implicitGrantSettings = [ordered]@{
+                    enableAccessTokenIssuance = $false
+                    enableIdTokenIssuance = $false
+                }
+            }
+            appRoles = @($applicationPlan['RoleDocument'])
+        }
+        Invoke-JsonMutation `
+            -Method 'PATCH' `
+            -Url "https://graph.microsoft.com/v1.0/applications/$cloudAppObjectId" `
+            -Document $applicationPatchDocument `
+            -Reason 'cloud-application-update-failed'
+
+        $cloudApplication = Invoke-BoundedDiscovery `
+            -Read {
+                $candidate = Get-CloudApplication $cloudAppClientId
+                $candidatePlan = Get-CloudApplicationConvergencePlan `
+                    $candidate $expectedSignInUri $expectedSignOutCallbackUri $expectedLogoutUri
+                if (-not [bool] $candidatePlan['NeedsPatch']) { Write-Output $candidate }
+            } `
+            -Reason 'cloud-application-update-invalid'
+        $applicationPlan = Get-CloudApplicationConvergencePlan `
+            $cloudApplication $expectedSignInUri $expectedSignOutCallbackUri $expectedLogoutUri
+        if ([bool] $applicationPlan['NeedsPatch']) { throw 'cloud-application-update-invalid' }
+    }
+
     $cloudAppObjectId = Read-String $cloudApplication 'id' 'cloud-application-response-invalid'
 
     Write-Output 'cloud-app-registration-valid'
@@ -554,8 +704,9 @@ try {
                         (Read-String $candidate 'id' 'cloud-service-principal-validation-failed'),
                         $createdServicePrincipalId,
                         [StringComparison]::OrdinalIgnoreCase
-                    )) { throw 'cloud-service-principal-validation-failed' }
-
+                    )) {
+                        throw 'cloud-service-principal-validation-failed'
+                    }
                     Write-Output $candidate
                 } `
                 -Reason 'cloud-service-principal-validation-failed'
@@ -578,10 +729,20 @@ try {
 
     $cloudSpObjectId = Read-String $cloudServicePrincipal 'id' 'cloud-service-principal-response-invalid'
     $cloudSpAppId = Read-String $cloudServicePrincipal 'appId' 'cloud-service-principal-response-invalid'
-    Assert-DistinctGuids @($localAppId, $deploymentAppId, $cloudAppClientId, $managedIdentityAppId) 'application-app-id-reused'
-    Assert-DistinctGuids @($localAppObjectId, $deploymentAppObjectId, $cloudAppObjectId) 'application-object-id-reused'
-    Assert-DistinctGuids @($deploymentSpObjectId, $cloudSpObjectId, $managedIdentityObjectId) 'service-principal-object-id-reused'
-    if (-not [string]::Equals($cloudSpAppId, $cloudAppClientId, [StringComparison]::OrdinalIgnoreCase)) {
+    Assert-DistinctGuids `
+        @($localAppId, $deploymentAppId, $cloudAppClientId, $managedIdentityAppId) `
+        'application-app-id-reused'
+    Assert-DistinctGuids `
+        @($localAppObjectId, $deploymentAppObjectId, $cloudAppObjectId) `
+        'application-object-id-reused'
+    Assert-DistinctGuids `
+        @($deploymentSpObjectId, $cloudSpObjectId, $managedIdentityObjectId) `
+        'service-principal-object-id-reused'
+    if (-not [string]::Equals(
+        $cloudSpAppId,
+        $cloudAppClientId,
+        [StringComparison]::OrdinalIgnoreCase
+    )) {
         throw 'identity-object-resolution-mismatch'
     }
 
@@ -623,7 +784,9 @@ try {
 }
 catch {
     $reason = $_.Exception.Message
-    if ($reason -notmatch '^[a-z0-9-]+$') { $reason = 'cloud-entra-bootstrap-operation-failed' }
+    if ($reason -notmatch '^[a-z0-9-]+$') {
+        $reason = 'cloud-entra-bootstrap-operation-failed'
+    }
     Write-Output "cloud-entra-bootstrap-failure-reason:$reason"
     Write-Output 'cloud-entra-bootstrap-failed'
     exit 1
